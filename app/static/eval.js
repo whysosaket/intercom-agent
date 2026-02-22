@@ -422,6 +422,10 @@ async function approveAndSend(convId, responseText) {
     const conv = conversations.find(c => c.conversation_id === convId);
     const userId = conv?.contact?.email || conv?.contact?.id || convId;
 
+    // Get the last customer message for memory storage
+    const userMessages = conv?.messages?.filter(m => m.role === "user") || [];
+    const customerMessage = userMessages.length > 0 ? userMessages[userMessages.length - 1].content : "";
+
     try {
         const res = await fetch("/eval/send", {
             method: "POST",
@@ -429,6 +433,7 @@ async function approveAndSend(convId, responseText) {
             body: JSON.stringify({
                 conversation_id: convId,
                 response_text: responseText,
+                customer_message: customerMessage,
                 user_id: userId,
             }),
         });

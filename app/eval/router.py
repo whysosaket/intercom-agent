@@ -33,6 +33,7 @@ class GenerateRequest(BaseModel):
 class SendRequest(BaseModel):
     conversation_id: str
     response_text: str
+    customer_message: str = ""
     user_id: str = ""
 
 
@@ -320,9 +321,16 @@ async def send_response(request: Request, body: SendRequest):
 
         # Store in memory via the main orchestrator's memory agent
         user_id = body.user_id or body.conversation_id
-        await orchestrator.memory_agent.store_exchange(
-            user_id, "", body.response_text
-        )
+        customer_msg = body.customer_message
+        if customer_msg:
+            await orchestrator.memory_agent.store_exchange(
+                user_id, customer_msg, body.response_text
+            )
+        else:
+            logger.warning(
+                "Skipping memory storage for %s — no customer message provided",
+                body.conversation_id,
+            )
 
         logger.info("Eval: sent response to conversation %s", body.conversation_id)
         return {
