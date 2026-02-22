@@ -14,6 +14,10 @@ class SkillAgentConfig:
     max_files_per_iteration: int = 5
     max_total_files: int = 8
 
+    # BM25 retrieval
+    bm25_top_k: int = 10  # number of files returned by BM25 search
+    keyword_model: str = "gpt-5-mini"  # lightweight model for keyword extraction
+
     # Content limits
     max_context_chars: int = 50_000
 

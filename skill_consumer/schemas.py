@@ -7,6 +7,20 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 
+# --- Step 0: KEYWORD EXTRACTION ---
+
+
+class KeywordExtraction(BaseModel):
+    """LLM output from the keyword extraction step."""
+
+    keywords: list[str] = Field(
+        description="3-8 search keywords extracted from the user question"
+    )
+    reasoning: str = Field(
+        description="Brief explanation of why these keywords were chosen"
+    )
+
+
 # --- Step 1: PLAN (which files to read) ---
 
 
