@@ -14,9 +14,56 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _strip_html(text: str) -> str:
+def strip_html(text: str) -> str:
     """Remove HTML tags from Intercom message bodies."""
     return re.sub(r"<[^>]+>", "", text).strip() if text else ""
+
+
+# Keep the underscore alias for internal backward compatibility
+_strip_html = strip_html
+
+# Part types that may contain real human messages.
+_ALLOWED_PART_TYPES = frozenset({"comment", "assignment"})
+# Intercom author types that represent customers (not support staff).
+_CUSTOMER_AUTHOR_TYPES = frozenset({"user", "lead"})
+
+
+def extract_messages(conv: dict) -> list[dict]:
+    """Extract ordered messages from a raw Intercom conversation dict.
+
+    Only includes real human messages (customers and admins). Filters out:
+    - All bot messages (Fin auto-replies, prompts, etc.)
+    - Intercom system parts (channel_and_reply_time_expectation, etc.)
+    - Internal admin notes
+    - System events (language detection, attribute updates, etc.)
+    """
+    messages: list[dict] = []
+
+    source = conv.get("source", {})
+    source_body = strip_html(source.get("body", ""))
+    source_author_type = source.get("author", {}).get("type", "")
+
+    if source_body and source_author_type != "bot":
+        role = "user" if source_author_type in _CUSTOMER_AUTHOR_TYPES else "admin"
+        messages.append({"role": role, "content": source_body})
+
+    parts = conv.get("conversation_parts", {}).get("conversation_parts", [])
+    for part in parts:
+        if part.get("part_type") not in _ALLOWED_PART_TYPES:
+            continue
+
+        author_type = part.get("author", {}).get("type", "")
+        if author_type == "bot":
+            continue
+
+        body = strip_html(part.get("body", ""))
+        if not body:
+            continue
+
+        role = "user" if author_type in _CUSTOMER_AUTHOR_TYPES else "admin"
+        messages.append({"role": role, "content": body})
+
+    return messages
 
 
 class SyncService:
@@ -193,53 +240,9 @@ class SyncService:
 
     # ── Helpers ──
 
-    # Part types that may contain real human messages.
-    # Bot author messages are filtered separately in _extract_messages.
-    # Excludes: channel_and_reply_time_expectation, note, and all system events.
-    _ALLOWED_PART_TYPES = frozenset({"comment", "assignment"})
-
-    # Intercom author types that represent customers (not support staff).
-    _CUSTOMER_AUTHOR_TYPES = frozenset({"user", "lead"})
-
     def _extract_messages(self, conv: dict) -> list[dict]:
-        """Extract ordered messages from a conversation.
-
-        Only includes real human messages (customers and admins). Filters out:
-        - All bot messages (Fin auto-replies, prompts, etc.)
-        - Intercom system parts (channel_and_reply_time_expectation, etc.)
-        - Internal admin notes
-        - System events (language detection, attribute updates, etc.)
-        """
-        messages: list[dict] = []
-
-        # Initial message from the source (skip if authored by bot)
-        source = conv.get("source", {})
-        source_body = _strip_html(source.get("body", ""))
-        source_author_type = source.get("author", {}).get("type", "")
-
-        if source_body and source_author_type != "bot":
-            role = "user" if source_author_type in self._CUSTOMER_AUTHOR_TYPES else "admin"
-            messages.append({"role": role, "content": source_body})
-
-        # Conversation parts — only real human messages (comment, assignment)
-        parts = conv.get("conversation_parts", {}).get("conversation_parts", [])
-        for part in parts:
-            if part.get("part_type") not in self._ALLOWED_PART_TYPES:
-                continue
-
-            author_type = part.get("author", {}).get("type", "")
-            # Skip all bot messages (Fin prompts, auto-replies, etc.)
-            if author_type == "bot":
-                continue
-
-            body = _strip_html(part.get("body", ""))
-            if not body:
-                continue
-
-            role = "user" if author_type in self._CUSTOMER_AUTHOR_TYPES else "admin"
-            messages.append({"role": role, "content": body})
-
-        return messages
+        """Delegate to module-level extract_messages."""
+        return extract_messages(conv)
 
     def _format_conversation(
         self, messages: list[dict], conversation_id: str

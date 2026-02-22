@@ -153,6 +153,8 @@ async def lifespan(app: FastAPI):
 
     app.state.orchestrator = orchestrator
     app.state.sync_service = sync_service
+    # A non-mock orchestrator for Intercom API calls (eval mode, sync, etc.)
+    app.state.intercom_orchestrator = sync_orchestrator
 
     logger.info("All agents initialized")
     yield
@@ -174,8 +176,10 @@ api.mount("/static", StaticFiles(directory="app/static"), name="static")
 # Chat UI (conditional)
 if settings.CHAT_UI_ENABLED:
     from app.chat.router import router as chat_router
+    from app.eval.router import router as eval_router
 
     api.include_router(chat_router)
+    api.include_router(eval_router)
 
 
 if _slack_available:

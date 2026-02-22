@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intercom Responder — Eval</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Geist+Sans:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/chat.css">
+    <link rel="stylesheet" href="/static/eval.css">
+</head>
+<body>
+    <div id="app">
+        <header class="app-header">
+            <div class="header-left">
+                <h1 class="app-title">Eval</h1>
+                <span id="status-info" class="session-badge" aria-live="polite"></span>
+            </div>
+            <div class="header-right">
+                <a href="/chat" class="btn btn-ghost">Chat Mode</a>
+                <button id="fetch-btn" class="btn btn-primary" type="button">Fetch Conversations</button>
+                <button id="generate-all-btn" class="btn btn-primary" type="button" disabled>Generate All</button>
+            </div>
+        </header>
+
+        <div class="eval-layout">
+            <!-- Left: Conversation list -->
+            <aside id="conv-list-panel" class="eval-panel conv-list-panel">
+                <div class="panel-header">
+                    <h2 class="panel-title">Conversations</h2>
+                    <span id="conv-count" class="panel-meta"></span>
+                </div>
+                <div id="conv-list" class="conv-list">
+                    <div class="empty-state">
+                        <p>No conversations loaded.</p>
+                        <p class="hint">Click "Fetch Conversations" to load unanswered messages from Intercom.</p>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Center: Message history + generate button -->
+            <main id="message-panel" class="eval-panel message-panel">
+                <div class="panel-header">
+                    <h2 class="panel-title" id="message-panel-title">Messages</h2>
+                    <div class="panel-actions">
+                        <button id="generate-btn" class="btn btn-primary" type="button" disabled>Generate Responses</button>
+                    </div>
+                </div>
+                <div id="message-history" class="message-history">
+                    <div class="empty-state">
+                        <p>Select a conversation from the left panel.</p>
+                    </div>
+                </div>
+            </main>
+
+            <!-- Right: Candidate responses -->
+            <aside id="candidates-panel" class="eval-panel candidates-panel">
+                <div class="panel-header">
+                    <h2 class="panel-title">Candidate Responses</h2>
+                </div>
+                <div id="candidates-content" class="candidates-content">
+                    <div class="empty-state">
+                        <p>Generate responses to see candidates here.</p>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <!-- Edit modal (reuse chat pattern) -->
+    <div id="edit-modal" class="modal hidden" role="dialog" aria-modal="true">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+            <h3 class="modal-title">Edit Response</h3>
+            <textarea id="edit-textarea" class="edit-textarea" rows="8"></textarea>
+            <div class="modal-actions">
+                <button id="edit-cancel" class="btn btn-ghost" type="button">Cancel</button>
+                <button id="edit-save" class="btn btn-primary" type="button">Save & Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/trace-renderer.js"></script>
+    <script src="/static/eval.js"></script>
+</body>
+</html>
