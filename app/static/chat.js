@@ -2,6 +2,8 @@
 let ws = null;
 let sessionId = null;
 let editingMessageIndex = null;
+const pipelineTraces = new Map();
+let messageCounter = 0;
 
 // DOM elements
 const chatMessages = document.getElementById("chat-messages");
@@ -14,6 +16,7 @@ const editModal = document.getElementById("edit-modal");
 const editTextarea = document.getElementById("edit-textarea");
 const editSaveBtn = document.getElementById("edit-save");
 const editCancelBtn = document.getElementById("edit-cancel");
+const panelTotalTime = document.getElementById("panel-total-time");
 
 // ─── Session management ───
 
@@ -34,8 +37,14 @@ async function createSession() {
     const data = await res.json();
     sessionId = data.session_id;
 
-    // Clear chat
+    // Clear chat and traces
     chatMessages.innerHTML = "";
+    pipelineTraces.clear();
+    messageCounter = 0;
+
+    // Reset detail panel
+    if (panelTotalTime) panelTotalTime.textContent = "";
+    detailContent.innerHTML = '<p class="hint">Send a message to see the pipeline trace.</p>';
 
     // Connect WebSocket
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
@@ -97,6 +106,7 @@ function handleServerMessage(msg) {
                 reasoning: msg.reasoning,
                 status: "sent",
                 autoSent: msg.auto_sent || false,
+                pipelineTrace: msg.pipeline_trace || [],
             });
             break;
 
@@ -106,6 +116,7 @@ function handleServerMessage(msg) {
                 reasoning: msg.reasoning,
                 status: "pending",
                 messageIndex: msg.message_index,
+                pipelineTrace: msg.pipeline_trace || [],
             });
             break;
 
@@ -143,8 +154,13 @@ function appendMessage(role, content) {
 }
 
 function appendAssistantMessage(content, opts = {}) {
+    const msgId = opts.messageIndex !== undefined
+        ? opts.messageIndex
+        : `auto_${messageCounter++}`;
+
     const wrapper = document.createElement("div");
     wrapper.className = "message-wrapper assistant";
+    wrapper.dataset.msgId = msgId;
     if (opts.messageIndex !== undefined) {
         wrapper.dataset.messageIndex = opts.messageIndex;
     }
@@ -153,9 +169,14 @@ function appendAssistantMessage(content, opts = {}) {
     bubble.className = `message assistant ${opts.status === "pending" ? "pending" : ""}`;
     bubble.textContent = content;
 
-    // Click to show details
+    // Store pipeline trace
+    if (opts.pipelineTrace && opts.pipelineTrace.length > 0) {
+        pipelineTraces.set(String(msgId), opts.pipelineTrace);
+    }
+
+    // Click to show pipeline trace
     bubble.addEventListener("click", () => {
-        showDetails(content, opts.confidence, opts.reasoning);
+        showPipelineTrace(String(msgId), content, opts.confidence, opts.reasoning);
     });
 
     wrapper.appendChild(bubble);
@@ -211,8 +232,8 @@ function appendAssistantMessage(content, opts = {}) {
     chatMessages.appendChild(wrapper);
     scrollToBottom();
 
-    // Auto-show details for latest message
-    showDetails(content, opts.confidence, opts.reasoning);
+    // Auto-show pipeline trace for latest message
+    showPipelineTrace(String(msgId), content, opts.confidence, opts.reasoning);
 }
 
 function appendSystemMessage(content) {
@@ -288,20 +309,280 @@ function removeTypingIndicator() {
     if (indicator) indicator.remove();
 }
 
-// ─── Detail panel ───
+// ─── Pipeline Trace Panel ───
 
-function showDetails(content, confidence, reasoning) {
+function showPipelineTrace(msgId, content, confidence, reasoning) {
+    const trace = pipelineTraces.get(msgId);
+
+    if (!trace || trace.length === 0) {
+        // Fallback for messages without trace data
+        showLegacyDetails(content, confidence, reasoning);
+        return;
+    }
+
+    // Calculate total pipeline time
+    const totalMs = trace.reduce((sum, step) => sum + (step.duration_ms || 0), 0);
+
+    // Update panel header
+    if (panelTotalTime) {
+        panelTotalTime.textContent = `${totalMs}ms total`;
+    }
+
+    // Build timeline HTML
+    let html = '<div class="pipeline-timeline">';
+    for (const step of trace) {
+        html += buildStepHtml(step);
+    }
+    html += '</div>';
+
+    // Add final response summary
+    html += buildResponseSummary(content, confidence);
+
+    detailContent.innerHTML = html;
+
+    // Attach expand/collapse click handlers
+    detailContent.querySelectorAll('.step-header').forEach(header => {
+        header.addEventListener('click', () => {
+            const stepEl = header.closest('.pipeline-step');
+            stepEl.classList.toggle('expanded');
+        });
+    });
+}
+
+function buildStepHtml(step) {
+    const statusClass = step.status || 'completed';
+    const details = step.details || {};
+
+    let detailsHtml = '';
+    switch (step.step_number) {
+        case 1:
+            detailsHtml = buildMemoryStepDetails(details);
+            break;
+        case 2:
+            detailsHtml = buildResponseStepDetails(details);
+            break;
+        case 3:
+            detailsHtml = buildPostProcessingStepDetails(details);
+            break;
+        case 4:
+            detailsHtml = buildRoutingStepDetails(details);
+            break;
+        default:
+            detailsHtml = `<div class="detail-scrollable">${escapeHtml(JSON.stringify(details, null, 2))}</div>`;
+    }
+
+    const durationLabel = step.duration_ms > 0 ? `${step.duration_ms}ms` : '';
+
+    return `
+        <div class="pipeline-step">
+            <div class="step-dot ${statusClass}"></div>
+            <div class="step-header">
+                <div class="step-title-area">
+                    <div class="step-title">${escapeHtml(step.step_name)}</div>
+                    <div class="step-summary">${escapeHtml(step.summary)}</div>
+                </div>
+                <div class="step-meta">
+                    ${durationLabel ? `<span class="step-duration">${durationLabel}</span>` : ''}
+                    <span class="step-chevron">&#9654;</span>
+                </div>
+            </div>
+            <div class="step-details">
+                ${detailsHtml}
+            </div>
+        </div>
+    `;
+}
+
+// ─── Step-Specific Detail Builders ───
+
+function buildMemoryStepDetails(details) {
+    const boostText = details.confidence_boost > 0
+        ? `+${(details.confidence_boost * 100).toFixed(0)}%`
+        : 'None';
+
+    let html = `
+        <div class="detail-row">
+            <span class="label">Conv. History</span>
+            <span class="value">${details.conversation_history_count || 0} turns</span>
+        </div>
+        <div class="detail-row">
+            <span class="label">Global Matches</span>
+            <span class="value">${details.global_matches_count || 0} found</span>
+        </div>
+        <div class="detail-row">
+            <span class="label">Confidence Boost</span>
+            <span class="value">${boostText}</span>
+        </div>
+    `;
+
+    if (details.conversation_history && details.conversation_history.length > 0) {
+        html += `
+            <div class="detail-subsection">
+                <span class="label">Conversation History</span>
+                <div class="detail-scrollable">${escapeHtml(JSON.stringify(details.conversation_history, null, 2))}</div>
+            </div>
+        `;
+    }
+
+    if (details.global_matches && details.global_matches.length > 0) {
+        html += `
+            <div class="detail-subsection">
+                <span class="label">Global Matches</span>
+                <div class="detail-scrollable">${escapeHtml(JSON.stringify(details.global_matches, null, 2))}</div>
+            </div>
+        `;
+    }
+
+    return html;
+}
+
+function buildResponseStepDetails(details) {
+    const confPct = ((details.initial_confidence || 0) * 100).toFixed(0);
+    const confColor = getConfidenceColor(details.initial_confidence || 0);
+
+    let html = `
+        <div class="detail-row">
+            <span class="label">Model</span>
+            <span class="value">${escapeHtml(details.model || 'unknown')}</span>
+        </div>
+        <div class="detail-row">
+            <span class="label">Initial Confidence</span>
+            <span class="value">
+                ${confPct}%
+                <span class="confidence-mini-bar">
+                    <span class="confidence-mini-bar-fill" style="width:${confPct}%;background:${confColor}"></span>
+                </span>
+            </span>
+        </div>
+        <div class="detail-row">
+            <span class="label">Skill Agent</span>
+            <span class="value">${details.skill_agent_used ? 'Yes' : 'No'}</span>
+        </div>
+    `;
+
+    if (details.reasoning) {
+        html += `
+            <div class="detail-subsection">
+                <span class="label">Reasoning</span>
+                <div class="detail-scrollable">${escapeHtml(details.reasoning)}</div>
+            </div>
+        `;
+    }
+
+    if (details.full_text) {
+        html += `
+            <div class="detail-subsection">
+                <span class="label">Generated Text</span>
+                <div class="detail-scrollable">${escapeHtml(details.full_text)}</div>
+            </div>
+        `;
+    }
+
+    return html;
+}
+
+function buildPostProcessingStepDetails(details) {
+    if (!details.enabled) {
+        return '<div class="detail-row"><span class="label">Status</span><span class="value">Disabled</span></div>';
+    }
+
+    const beforePct = ((details.confidence_before || 0) * 100).toFixed(0);
+    const afterPct = ((details.confidence_after || 0) * 100).toFixed(0);
+    const delta = details.confidence_delta || 0;
+    const deltaStr = delta > 0 ? `+${(delta * 100).toFixed(1)}%` : `${(delta * 100).toFixed(1)}%`;
+    const deltaColor = delta > 0 ? '#10b981' : delta < 0 ? '#ef4444' : '#8b90a0';
+    const afterColor = getConfidenceColor(details.confidence_after || 0);
+
+    let html = `
+        <div class="detail-row">
+            <span class="label">Model</span>
+            <span class="value">${escapeHtml(details.model || 'unknown')}</span>
+        </div>
+        <div class="detail-row">
+            <span class="label">Confidence</span>
+            <span class="value">
+                ${beforePct}% &rarr; ${afterPct}%
+                <span style="color:${deltaColor};font-weight:600;margin-left:4px">(${deltaStr})</span>
+                <span class="confidence-mini-bar">
+                    <span class="confidence-mini-bar-fill" style="width:${afterPct}%;background:${afterColor}"></span>
+                </span>
+            </span>
+        </div>
+        <div class="detail-row">
+            <span class="label">Text Changed</span>
+            <span class="value">${details.text_changed ? 'Yes' : 'No'}</span>
+        </div>
+    `;
+
+    if (details.reasoning) {
+        html += `
+            <div class="detail-subsection">
+                <span class="label">Reasoning</span>
+                <div class="detail-scrollable">${escapeHtml(details.reasoning)}</div>
+            </div>
+        `;
+    }
+
+    return html;
+}
+
+function buildRoutingStepDetails(details) {
+    const isAutoSent = details.decision === 'auto_sent';
+    const decisionColor = isAutoSent ? '#10b981' : '#f59e0b';
+    const decisionLabel = isAutoSent ? 'AUTO-SENT' : 'PENDING REVIEW';
+    const confPct = ((details.final_confidence || 0) * 100).toFixed(0);
+    const threshPct = ((details.threshold || 0) * 100).toFixed(0);
+
+    return `
+        <div class="detail-row">
+            <span class="label">Decision</span>
+            <span class="value" style="color:${decisionColor};font-weight:700">${decisionLabel}</span>
+        </div>
+        <div class="detail-row">
+            <span class="label">Final Confidence</span>
+            <span class="value">${confPct}%</span>
+        </div>
+        <div class="detail-row">
+            <span class="label">Threshold</span>
+            <span class="value">${threshPct}%</span>
+        </div>
+        <div class="detail-row">
+            <span class="label">Reason</span>
+            <span class="value">${escapeHtml(details.reason || '')}</span>
+        </div>
+    `;
+}
+
+function buildResponseSummary(content, confidence) {
+    const confPct = ((confidence || 0) * 100).toFixed(0);
+    const confColor = getConfidenceColor(confidence || 0);
+
+    return `
+        <div class="response-summary">
+            <div class="detail-row">
+                <span class="label">Final Response</span>
+                <span class="value">
+                    ${confPct}% confidence
+                    <span class="confidence-mini-bar">
+                        <span class="confidence-mini-bar-fill" style="width:${confPct}%;background:${confColor}"></span>
+                    </span>
+                </span>
+            </div>
+            <div class="detail-scrollable" style="max-height:200px">${escapeHtml(content)}</div>
+        </div>
+    `;
+}
+
+// ─── Legacy Detail Panel (fallback) ───
+
+function showLegacyDetails(content, confidence, reasoning) {
+    if (panelTotalTime) panelTotalTime.textContent = "";
+
     let html = "";
 
     if (confidence !== undefined) {
         const pct = (confidence * 100).toFixed(1);
-        const cls = getConfidenceClass(confidence);
-        const color =
-            cls === "confidence-high"
-                ? "#22c55e"
-                : cls === "confidence-mid"
-                  ? "#f59e0b"
-                  : "#ef4444";
+        const color = getConfidenceColor(confidence);
 
         html += `
             <div class="detail-section">
@@ -390,6 +671,12 @@ function getConfidenceClass(confidence) {
     if (confidence >= 0.8) return "confidence-high";
     if (confidence >= 0.5) return "confidence-mid";
     return "confidence-low";
+}
+
+function getConfidenceColor(confidence) {
+    if (confidence >= 0.8) return '#10b981';
+    if (confidence >= 0.5) return '#f59e0b';
+    return '#ef4444';
 }
 
 function scrollToBottom() {

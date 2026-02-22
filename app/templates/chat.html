@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Intercom Responder - Chat Test</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/chat.css">
 </head>
 <body>
@@ -33,9 +36,12 @@
             </main>
 
             <aside id="detail-panel">
-                <h3>Response Details</h3>
+                <div class="panel-header">
+                    <h3>Pipeline Trace</h3>
+                    <span id="panel-total-time" class="panel-meta"></span>
+                </div>
                 <div id="detail-content">
-                    <p class="hint">Click on an assistant message to see details.</p>
+                    <p class="hint">Click on an assistant message to see the pipeline trace.</p>
                 </div>
             </aside>
         </div>
