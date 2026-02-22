@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.agents import (
+        DocAgent,
         MemZeroAgent,
         MemoryAgent,
         ResponseAgent,
@@ -61,10 +62,31 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Skill agent disabled")
 
+    # Doc Agent: searches Mintlify documentation before falling back to SkillAgent
+    doc_agent = None
+    if settings.DOC_AGENT_ENABLED and settings.OPENAI_API_KEY:
+        doc_agent = DocAgent(
+            api_key=settings.OPENAI_API_KEY,
+            mintlify_url=settings.DOC_AGENT_MINTLIFY_URL,
+            product_description=settings.DOC_AGENT_PRODUCT_DESCRIPTION,
+            model=settings.DOC_AGENT_MODEL,
+            confidence_threshold=settings.DOC_AGENT_CONFIDENCE_THRESHOLD,
+            skill_agent=skill_agent,
+            max_results=settings.DOC_AGENT_MAX_RESULTS,
+        )
+        await doc_agent.initialize()
+        logger.info("Doc agent initialized (url=%s, model=%s)",
+                     settings.DOC_AGENT_MINTLIFY_URL, settings.DOC_AGENT_MODEL)
+    else:
+        logger.info("Doc agent disabled")
+
+    # The fallback agent is DocAgent (which wraps SkillAgent) or bare SkillAgent
+    fallback_agent = doc_agent or skill_agent
+
     response_agent = ResponseAgent(
         api_key=settings.OPENAI_API_KEY,
         model=settings.OPENAI_MODEL,
-        skill_agent=skill_agent,
+        skill_agent=fallback_agent,
         confidence_threshold=settings.CONFIDENCE_THRESHOLD,
     )
 
@@ -136,6 +158,8 @@ async def lifespan(app: FastAPI):
     yield
 
     await orchestrator.shutdown()
+    if doc_agent:
+        await doc_agent.shutdown()
     if sync_orchestrator:
         await sync_orchestrator.close()
     logger.info("Shutdown complete")

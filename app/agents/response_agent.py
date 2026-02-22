@@ -134,7 +134,9 @@ class ResponseAgent(BaseAgent):
             response_format={"type": "json_object"},
         )
 
-        parsed = json.loads(response.choices[0].message.content)
+        raw = response.choices[0].message.content
+        self.logger.debug("[Primary Generation] LLM response: %s", raw)
+        parsed = json.loads(raw)
         return GeneratedResponse(
             text=parsed["response_text"],
             confidence=float(parsed["confidence"]),

@@ -222,7 +222,9 @@ class SkillAgent:
             timeout=self.config.llm_timeout,
         )
 
-        raw = json.loads(response.choices[0].message.content)
+        raw_text = response.choices[0].message.content
+        logger.debug("[Skill Agent - Plan] LLM response: %s", raw_text)
+        raw = json.loads(raw_text)
         return PlanDecision(**raw)
 
     async def _observe(
@@ -252,7 +254,9 @@ class SkillAgent:
             timeout=self.config.llm_timeout,
         )
 
-        raw = json.loads(response.choices[0].message.content)
+        raw_text = response.choices[0].message.content
+        logger.debug("[Skill Agent - Observe] LLM response: %s", raw_text)
+        raw = json.loads(raw_text)
         return ObserveDecision(**raw)
 
     async def _synthesize(
@@ -278,7 +282,9 @@ class SkillAgent:
             timeout=self.config.llm_timeout,
         )
 
-        raw = json.loads(response.choices[0].message.content)
+        raw_text = response.choices[0].message.content
+        logger.debug("[Skill Agent - Synthesize] LLM response: %s", raw_text)
+        raw = json.loads(raw_text)
         return SkillAgentResponse(**raw)
 
     def _resolve_base_path(self, relative_path: str) -> str | None:
