@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from mem0 import MemoryClient
 
 from app.agents.base import BaseAgent
+
+if TYPE_CHECKING:
+    from app.chat.trace import TraceCollector
 
 
 class MemZeroAgent(BaseAgent):
@@ -30,8 +35,26 @@ class MemZeroAgent(BaseAgent):
         user_id: str,
         query: str = "",
         top_k: int = 20,
+        trace: TraceCollector | None = None,
     ) -> list[dict]:
         """Retrieve recent conversation turns for context."""
+        if trace:
+            with trace.step(
+                "Mem0 Search: conversation history",
+                "mem0_search",
+                input_summary=f"user_id={user_id}, top_k={top_k}",
+            ) as ev:
+                results = self.client.search(
+                    query=query or "conversation history",
+                    user_id=user_id,
+                    top_k=top_k,
+                )
+                ev.output_summary = f"{len(results)} results"
+                ev.details = {
+                    "result_count": len(results),
+                    "results": results[:5],
+                }
+                return results
         return self.client.search(
             query=query or "conversation history",
             user_id=user_id,
@@ -42,8 +65,28 @@ class MemZeroAgent(BaseAgent):
         self,
         query: str,
         top_k: int = 5,
+        trace: TraceCollector | None = None,
     ) -> list[dict]:
         """Search the global answer catalogue for relevant past Q&A pairs."""
+        if trace:
+            with trace.step(
+                "Mem0 Search: global catalogue",
+                "mem0_search",
+                input_summary=f"query={query[:80]}, top_k={top_k}",
+            ) as ev:
+                results = self.client.search(
+                    query=query,
+                    user_id=self.global_user_id,
+                    top_k=top_k,
+                )
+                top_score = max((m.get("score", 0) for m in results), default=0)
+                ev.output_summary = f"{len(results)} results, top_score={top_score:.3f}"
+                ev.details = {
+                    "result_count": len(results),
+                    "top_score": top_score,
+                    "results": results[:5],
+                }
+                return results
         return self.client.search(
             query=query,
             user_id=self.global_user_id,

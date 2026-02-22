@@ -8,11 +8,15 @@ AI-generated response before routing.
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING
 
 from openai import AsyncOpenAI
 
 from app.agents.base import BaseAgent
 from app.models.schemas import GeneratedResponse, PostProcessorInput, PostProcessorOutput
+
+if TYPE_CHECKING:
+    from app.chat.trace import TraceCollector
 
 POST_PROCESSOR_SYSTEM_PROMPT = """\
 You are a post-processing agent. Your primary job is to FIX responses so they read like a real human support agent wrote them. Your secondary job is to lightly evaluate confidence.
@@ -195,6 +199,7 @@ class PostProcessingAgent(BaseAgent):
         self,
         customer_message: str,
         generated_response: GeneratedResponse,
+        trace: TraceCollector | None = None,
     ) -> GeneratedResponse:
         """Post-process a generated response.
 
@@ -225,23 +230,62 @@ class PostProcessingAgent(BaseAgent):
 
             user_prompt = self._build_user_prompt(pp_input)
 
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": POST_PROCESSOR_SYSTEM_PROMPT},
-                    {"role": "user", "content": user_prompt},
-                ],
-                response_format={"type": "json_object"},
-            )
-
-            raw = response.choices[0].message.content
-            self.logger.debug("[Post-Processing] LLM response: %s", raw)
-            parsed = json.loads(raw)
-            pp_output = PostProcessorOutput(
-                refined_text=parsed["refined_text"],
-                final_confidence=float(parsed["final_confidence"]),
-                reasoning=parsed.get("reasoning", ""),
-            )
+            if trace:
+                with trace.step(
+                    f"OpenAI LLM call ({self.model})",
+                    "llm_call",
+                    input_summary=f"model={self.model}, postprocessor (judge+fixer)",
+                ) as ev:
+                    response = await self.client.chat.completions.create(
+                        model=self.model,
+                        messages=[
+                            {"role": "system", "content": POST_PROCESSOR_SYSTEM_PROMPT},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        response_format={"type": "json_object"},
+                    )
+                    raw = response.choices[0].message.content
+                    self.logger.debug("[Post-Processing] LLM response: %s", raw)
+                    parsed = json.loads(raw)
+                    pp_output = PostProcessorOutput(
+                        refined_text=parsed["refined_text"],
+                        final_confidence=float(parsed["final_confidence"]),
+                        reasoning=parsed.get("reasoning", ""),
+                    )
+                    ev.output_summary = (
+                        f"confidence {pp_input.original_confidence:.2f} -> {pp_output.final_confidence:.2f}"
+                    )
+                    ev.details = {
+                        "model": self.model,
+                        "confidence_before": pp_input.original_confidence,
+                        "confidence_after": pp_output.final_confidence,
+                        "confidence_delta": round(pp_output.final_confidence - pp_input.original_confidence, 4),
+                        "text_changed": pp_input.generated_response != pp_output.refined_text,
+                        "pp_reasoning": pp_output.reasoning,
+                        "refined_text_preview": pp_output.refined_text[:200],
+                        "raw_response": raw[:500],
+                        "usage": {
+                            "prompt_tokens": response.usage.prompt_tokens if response.usage else None,
+                            "completion_tokens": response.usage.completion_tokens if response.usage else None,
+                        },
+                    }
+            else:
+                response = await self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": POST_PROCESSOR_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    response_format={"type": "json_object"},
+                )
+                raw = response.choices[0].message.content
+                self.logger.debug("[Post-Processing] LLM response: %s", raw)
+                parsed = json.loads(raw)
+                pp_output = PostProcessorOutput(
+                    refined_text=parsed["refined_text"],
+                    final_confidence=float(parsed["final_confidence"]),
+                    reasoning=parsed.get("reasoning", ""),
+                )
 
             self.logger.info(
                 "Post-processor refined response: confidence %.2f -> %.2f",

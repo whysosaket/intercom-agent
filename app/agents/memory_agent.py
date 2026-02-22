@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from app.agents.base import BaseAgent
 from app.agents.memzero_agent import MemZeroAgent
+
+if TYPE_CHECKING:
+    from app.chat.trace import TraceCollector
 
 
 @dataclass
@@ -36,6 +40,7 @@ class MemoryAgent(BaseAgent):
         self,
         user_id: str,
         message: str,
+        trace: TraceCollector | None = None,
     ) -> MemoryContext:
         """Fetch all memory context for a given user message.
 
@@ -43,10 +48,21 @@ class MemoryAgent(BaseAgent):
         confidence adjustment based on Mem0 relevance scores.
         """
         conv_history = self.memzero.search_conversation_history(
-            user_id, query=message
+            user_id, query=message, trace=trace
         )
-        global_matches = self.memzero.search_global_catalogue(message)
+        global_matches = self.memzero.search_global_catalogue(
+            message, trace=trace
+        )
         boost = self._compute_confidence_boost(global_matches)
+
+        if trace:
+            with trace.step(
+                "Compute confidence boost",
+                "computation",
+                input_summary=f"{len(global_matches)} global matches",
+            ) as ev:
+                ev.output_summary = f"boost={boost}" if boost > 0 else "no boost (no near-exact match)"
+                ev.details = {"boost": boost}
 
         return MemoryContext(
             conversation_history=conv_history,

@@ -3,6 +3,7 @@ let ws = null;
 let sessionId = null;
 let editingMessageIndex = null;
 const pipelineTraces = new Map();
+const pipelineDurations = new Map();
 let messageCounter = 0;
 
 // DOM elements
@@ -23,7 +24,6 @@ const panelTotalTime = document.getElementById("panel-total-time");
 newSessionBtn.addEventListener("click", createSession);
 
 async function createSession() {
-    // Close existing WebSocket
     if (ws) {
         ws.close();
         ws = null;
@@ -37,16 +37,14 @@ async function createSession() {
     const data = await res.json();
     sessionId = data.session_id;
 
-    // Clear chat and traces
     chatMessages.innerHTML = "";
     pipelineTraces.clear();
+    pipelineDurations.clear();
     messageCounter = 0;
 
-    // Reset detail panel
     if (panelTotalTime) panelTotalTime.textContent = "";
     detailContent.innerHTML = '<p class="hint">Send a message to see the pipeline trace.</p>';
 
-    // Connect WebSocket
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
     ws = new WebSocket(`${protocol}//${location.host}/chat/ws/${sessionId}`);
 
@@ -90,7 +88,6 @@ function sendMessage() {
     ws.send(JSON.stringify({ type: "user_message", content: text }));
     messageInput.value = "";
 
-    // Show typing indicator
     showTypingIndicator();
 }
 
@@ -107,6 +104,7 @@ function handleServerMessage(msg) {
                 status: "sent",
                 autoSent: msg.auto_sent || false,
                 pipelineTrace: msg.pipeline_trace || [],
+                totalDurationMs: msg.total_duration_ms || 0,
             });
             break;
 
@@ -117,6 +115,7 @@ function handleServerMessage(msg) {
                 status: "pending",
                 messageIndex: msg.message_index,
                 pipelineTrace: msg.pipeline_trace || [],
+                totalDurationMs: msg.total_duration_ms || 0,
             });
             break;
 
@@ -169,9 +168,10 @@ function appendAssistantMessage(content, opts = {}) {
     bubble.className = `message assistant ${opts.status === "pending" ? "pending" : ""}`;
     bubble.textContent = content;
 
-    // Store pipeline trace
+    // Store pipeline trace and duration
     if (opts.pipelineTrace && opts.pipelineTrace.length > 0) {
         pipelineTraces.set(String(msgId), opts.pipelineTrace);
+        pipelineDurations.set(String(msgId), opts.totalDurationMs || 0);
     }
 
     // Click to show pipeline trace
@@ -189,7 +189,7 @@ function appendAssistantMessage(content, opts = {}) {
         wrapper.appendChild(badge);
     }
 
-    // Review action buttons (manual mode, pending status)
+    // Review action buttons
     if (opts.status === "pending" && opts.messageIndex !== undefined) {
         const actions = document.createElement("div");
         actions.className = "review-actions";
@@ -221,7 +221,7 @@ function appendAssistantMessage(content, opts = {}) {
         wrapper.appendChild(actions);
     }
 
-    // Status label for auto-sent messages (high confidence)
+    // Status label for auto-sent messages
     if (opts.status === "sent" && opts.autoSent) {
         const label = document.createElement("span");
         label.className = "status-label";
@@ -259,10 +259,8 @@ function updateDraftStatus(messageIndex, status, newContent) {
 
     const bubble = wrapper.querySelector(".message");
 
-    // Remove pending styling
     bubble.classList.remove("pending");
 
-    // Remove action buttons
     const actions = wrapper.querySelector(".review-actions");
     if (actions) actions.remove();
 
@@ -274,7 +272,6 @@ function updateDraftStatus(messageIndex, status, newContent) {
         bubble.textContent = newContent;
     }
 
-    // Add status label
     const label = document.createElement("span");
     label.className = "status-label";
     const statusText = {
@@ -311,246 +308,188 @@ function removeTypingIndicator() {
 
 // ─── Pipeline Trace Panel ───
 
+// Map call_type to display icon/color
+const CALL_TYPE_CONFIG = {
+    mem0_search: { icon: "M", color: "#8b5cf6", label: "Mem0" },
+    llm_call: { icon: "AI", color: "#4f6ef7", label: "LLM" },
+    http_fetch: { icon: "H", color: "#06b6d4", label: "HTTP" },
+    computation: { icon: "C", color: "#10b981", label: "Compute" },
+    agent_call: { icon: "A", color: "#f59e0b", label: "Agent" },
+};
+
+function getCallTypeConfig(callType) {
+    return CALL_TYPE_CONFIG[callType] || { icon: "?", color: "#8b90a0", label: callType };
+}
+
 function showPipelineTrace(msgId, content, confidence, reasoning) {
     const trace = pipelineTraces.get(msgId);
 
     if (!trace || trace.length === 0) {
-        // Fallback for messages without trace data
         showLegacyDetails(content, confidence, reasoning);
         return;
     }
 
-    // Calculate total pipeline time
-    const totalMs = trace.reduce((sum, step) => sum + (step.duration_ms || 0), 0);
+    // Get total pipeline time from stored duration or sum events
+    const totalMs = pipelineDurations.get(msgId) ||
+        trace.reduce((sum, ev) => sum + (ev.duration_ms || 0), 0);
 
-    // Update panel header
     if (panelTotalTime) {
         panelTotalTime.textContent = `${totalMs}ms total`;
     }
 
-    // Build timeline HTML
+    // Build timeline HTML from flat event list
     let html = '<div class="pipeline-timeline">';
-    for (const step of trace) {
-        html += buildStepHtml(step);
+    for (let i = 0; i < trace.length; i++) {
+        html += buildEventHtml(trace[i], i);
     }
     html += '</div>';
 
-    // Add final response summary
+    // Final response summary
     html += buildResponseSummary(content, confidence);
 
     detailContent.innerHTML = html;
 
     // Attach expand/collapse click handlers
-    detailContent.querySelectorAll('.step-header').forEach(header => {
+    detailContent.querySelectorAll('.event-header').forEach(header => {
         header.addEventListener('click', () => {
-            const stepEl = header.closest('.pipeline-step');
-            stepEl.classList.toggle('expanded');
+            const eventEl = header.closest('.trace-event');
+            eventEl.classList.toggle('expanded');
         });
     });
 }
 
-function buildStepHtml(step) {
-    const statusClass = step.status || 'completed';
-    const details = step.details || {};
+function buildEventHtml(event, index) {
+    const config = getCallTypeConfig(event.call_type);
+    const statusClass = event.status || 'completed';
+    const durationLabel = event.duration_ms > 0 ? `${event.duration_ms}ms` : '';
 
+    // Build details HTML
+    const details = event.details || {};
     let detailsHtml = '';
-    switch (step.step_number) {
-        case 1:
-            detailsHtml = buildMemoryStepDetails(details);
-            break;
-        case 2:
-            detailsHtml = buildResponseStepDetails(details);
-            break;
-        case 3:
-            detailsHtml = buildPostProcessingStepDetails(details);
-            break;
-        case 4:
-            detailsHtml = buildRoutingStepDetails(details);
-            break;
-        default:
-            detailsHtml = `<div class="detail-scrollable">${escapeHtml(JSON.stringify(details, null, 2))}</div>`;
+    if (Object.keys(details).length > 0) {
+        detailsHtml = buildEventDetails(details);
     }
-
-    const durationLabel = step.duration_ms > 0 ? `${step.duration_ms}ms` : '';
 
     return `
-        <div class="pipeline-step">
-            <div class="step-dot ${statusClass}"></div>
-            <div class="step-header">
-                <div class="step-title-area">
-                    <div class="step-title">${escapeHtml(step.step_name)}</div>
-                    <div class="step-summary">${escapeHtml(step.summary)}</div>
+        <div class="trace-event" data-status="${statusClass}" data-call-type="${event.call_type}">
+            <div class="event-connector">
+                <div class="event-dot ${statusClass}" style="border-color:${config.color}${statusClass === 'completed' ? ';background:' + config.color : ''}">
+                    <span class="event-dot-label">${config.icon}</span>
                 </div>
-                <div class="step-meta">
-                    ${durationLabel ? `<span class="step-duration">${durationLabel}</span>` : ''}
-                    <span class="step-chevron">&#9654;</span>
+                ${index < 999 ? '<div class="event-line"></div>' : ''}
+            </div>
+            <div class="event-content">
+                <div class="event-header">
+                    <div class="event-title-area">
+                        <div class="event-title">
+                            <span class="call-type-badge" style="background:${config.color}15;color:${config.color}">${config.label}</span>
+                            ${escapeHtml(event.label)}
+                        </div>
+                        <div class="event-summary">
+                            ${event.input_summary ? '<span class="event-input">' + escapeHtml(event.input_summary) + '</span>' : ''}
+                            ${event.output_summary ? '<span class="event-output">' + escapeHtml(event.output_summary) + '</span>' : ''}
+                        </div>
+                    </div>
+                    <div class="event-meta">
+                        ${statusClass === 'error' ? '<span class="event-status-badge error">ERROR</span>' : ''}
+                        ${statusClass === 'skipped' ? '<span class="event-status-badge skipped">SKIPPED</span>' : ''}
+                        ${durationLabel ? `<span class="event-duration">${durationLabel}</span>` : ''}
+                        <span class="event-chevron">&#9654;</span>
+                    </div>
                 </div>
-            </div>
-            <div class="step-details">
-                ${detailsHtml}
+                ${detailsHtml ? `<div class="event-details">${detailsHtml}</div>` : ''}
+                ${event.error_message ? `<div class="event-error">${escapeHtml(event.error_message)}</div>` : ''}
             </div>
         </div>
     `;
 }
 
-// ─── Step-Specific Detail Builders ───
+function buildEventDetails(details) {
+    let html = '';
 
-function buildMemoryStepDetails(details) {
-    const boostText = details.confidence_boost > 0
-        ? `+${(details.confidence_boost * 100).toFixed(0)}%`
-        : 'None';
+    for (const [key, value] of Object.entries(details)) {
+        if (value === null || value === undefined) continue;
 
-    let html = `
-        <div class="detail-row">
-            <span class="label">Conv. History</span>
-            <span class="value">${details.conversation_history_count || 0} turns</span>
-        </div>
-        <div class="detail-row">
-            <span class="label">Global Matches</span>
-            <span class="value">${details.global_matches_count || 0} found</span>
-        </div>
-        <div class="detail-row">
-            <span class="label">Confidence Boost</span>
-            <span class="value">${boostText}</span>
-        </div>
-    `;
+        const label = formatDetailLabel(key);
 
-    if (details.conversation_history && details.conversation_history.length > 0) {
-        html += `
-            <div class="detail-subsection">
-                <span class="label">Conversation History</span>
-                <div class="detail-scrollable">${escapeHtml(JSON.stringify(details.conversation_history, null, 2))}</div>
-            </div>
-        `;
-    }
-
-    if (details.global_matches && details.global_matches.length > 0) {
-        html += `
-            <div class="detail-subsection">
-                <span class="label">Global Matches</span>
-                <div class="detail-scrollable">${escapeHtml(JSON.stringify(details.global_matches, null, 2))}</div>
-            </div>
-        `;
+        if (typeof value === 'object' && !Array.isArray(value)) {
+            // Nested object — render as scrollable JSON
+            html += `
+                <div class="detail-subsection">
+                    <span class="label">${escapeHtml(label)}</span>
+                    <div class="detail-scrollable">${escapeHtml(JSON.stringify(value, null, 2))}</div>
+                </div>
+            `;
+        } else if (Array.isArray(value)) {
+            if (value.length === 0) {
+                html += `
+                    <div class="detail-row">
+                        <span class="label">${escapeHtml(label)}</span>
+                        <span class="value">[] (empty)</span>
+                    </div>
+                `;
+            } else if (typeof value[0] === 'object') {
+                html += `
+                    <div class="detail-subsection">
+                        <span class="label">${escapeHtml(label)} (${value.length})</span>
+                        <div class="detail-scrollable">${escapeHtml(JSON.stringify(value, null, 2))}</div>
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div class="detail-row">
+                        <span class="label">${escapeHtml(label)}</span>
+                        <span class="value">${escapeHtml(value.join(', '))}</span>
+                    </div>
+                `;
+            }
+        } else if (typeof value === 'number' && key.toLowerCase().includes('confidence')) {
+            // Confidence with mini-bar
+            const pct = (value * 100).toFixed(0);
+            const color = getConfidenceColor(value);
+            html += `
+                <div class="detail-row">
+                    <span class="label">${escapeHtml(label)}</span>
+                    <span class="value">
+                        ${pct}%
+                        <span class="confidence-mini-bar">
+                            <span class="confidence-mini-bar-fill" style="width:${pct}%;background:${color}"></span>
+                        </span>
+                    </span>
+                </div>
+            `;
+        } else if (typeof value === 'boolean') {
+            html += `
+                <div class="detail-row">
+                    <span class="label">${escapeHtml(label)}</span>
+                    <span class="value">${value ? 'Yes' : 'No'}</span>
+                </div>
+            `;
+        } else if (typeof value === 'string' && value.length > 120) {
+            // Long strings in scrollable container
+            html += `
+                <div class="detail-subsection">
+                    <span class="label">${escapeHtml(label)}</span>
+                    <div class="detail-scrollable">${escapeHtml(value)}</div>
+                </div>
+            `;
+        } else {
+            html += `
+                <div class="detail-row">
+                    <span class="label">${escapeHtml(label)}</span>
+                    <span class="value">${escapeHtml(String(value))}</span>
+                </div>
+            `;
+        }
     }
 
     return html;
 }
 
-function buildResponseStepDetails(details) {
-    const confPct = ((details.initial_confidence || 0) * 100).toFixed(0);
-    const confColor = getConfidenceColor(details.initial_confidence || 0);
-
-    let html = `
-        <div class="detail-row">
-            <span class="label">Model</span>
-            <span class="value">${escapeHtml(details.model || 'unknown')}</span>
-        </div>
-        <div class="detail-row">
-            <span class="label">Initial Confidence</span>
-            <span class="value">
-                ${confPct}%
-                <span class="confidence-mini-bar">
-                    <span class="confidence-mini-bar-fill" style="width:${confPct}%;background:${confColor}"></span>
-                </span>
-            </span>
-        </div>
-        <div class="detail-row">
-            <span class="label">Skill Agent</span>
-            <span class="value">${details.skill_agent_used ? 'Yes' : 'No'}</span>
-        </div>
-    `;
-
-    if (details.reasoning) {
-        html += `
-            <div class="detail-subsection">
-                <span class="label">Reasoning</span>
-                <div class="detail-scrollable">${escapeHtml(details.reasoning)}</div>
-            </div>
-        `;
-    }
-
-    if (details.full_text) {
-        html += `
-            <div class="detail-subsection">
-                <span class="label">Generated Text</span>
-                <div class="detail-scrollable">${escapeHtml(details.full_text)}</div>
-            </div>
-        `;
-    }
-
-    return html;
-}
-
-function buildPostProcessingStepDetails(details) {
-    if (!details.enabled) {
-        return '<div class="detail-row"><span class="label">Status</span><span class="value">Disabled</span></div>';
-    }
-
-    const beforePct = ((details.confidence_before || 0) * 100).toFixed(0);
-    const afterPct = ((details.confidence_after || 0) * 100).toFixed(0);
-    const delta = details.confidence_delta || 0;
-    const deltaStr = delta > 0 ? `+${(delta * 100).toFixed(1)}%` : `${(delta * 100).toFixed(1)}%`;
-    const deltaColor = delta > 0 ? '#10b981' : delta < 0 ? '#ef4444' : '#8b90a0';
-    const afterColor = getConfidenceColor(details.confidence_after || 0);
-
-    let html = `
-        <div class="detail-row">
-            <span class="label">Model</span>
-            <span class="value">${escapeHtml(details.model || 'unknown')}</span>
-        </div>
-        <div class="detail-row">
-            <span class="label">Confidence</span>
-            <span class="value">
-                ${beforePct}% &rarr; ${afterPct}%
-                <span style="color:${deltaColor};font-weight:600;margin-left:4px">(${deltaStr})</span>
-                <span class="confidence-mini-bar">
-                    <span class="confidence-mini-bar-fill" style="width:${afterPct}%;background:${afterColor}"></span>
-                </span>
-            </span>
-        </div>
-        <div class="detail-row">
-            <span class="label">Text Changed</span>
-            <span class="value">${details.text_changed ? 'Yes' : 'No'}</span>
-        </div>
-    `;
-
-    if (details.reasoning) {
-        html += `
-            <div class="detail-subsection">
-                <span class="label">Reasoning</span>
-                <div class="detail-scrollable">${escapeHtml(details.reasoning)}</div>
-            </div>
-        `;
-    }
-
-    return html;
-}
-
-function buildRoutingStepDetails(details) {
-    const isAutoSent = details.decision === 'auto_sent';
-    const decisionColor = isAutoSent ? '#10b981' : '#f59e0b';
-    const decisionLabel = isAutoSent ? 'AUTO-SENT' : 'PENDING REVIEW';
-    const confPct = ((details.final_confidence || 0) * 100).toFixed(0);
-    const threshPct = ((details.threshold || 0) * 100).toFixed(0);
-
-    return `
-        <div class="detail-row">
-            <span class="label">Decision</span>
-            <span class="value" style="color:${decisionColor};font-weight:700">${decisionLabel}</span>
-        </div>
-        <div class="detail-row">
-            <span class="label">Final Confidence</span>
-            <span class="value">${confPct}%</span>
-        </div>
-        <div class="detail-row">
-            <span class="label">Threshold</span>
-            <span class="value">${threshPct}%</span>
-        </div>
-        <div class="detail-row">
-            <span class="label">Reason</span>
-            <span class="value">${escapeHtml(details.reason || '')}</span>
-        </div>
-    `;
+function formatDetailLabel(key) {
+    return key
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, c => c.toUpperCase());
 }
 
 function buildResponseSummary(content, confidence) {
@@ -659,7 +598,6 @@ editCancelBtn.addEventListener("click", () => {
     editingMessageIndex = null;
 });
 
-// Close modal on backdrop click
 document.querySelector(".modal-backdrop")?.addEventListener("click", () => {
     editModal.classList.add("hidden");
     editingMessageIndex = null;
