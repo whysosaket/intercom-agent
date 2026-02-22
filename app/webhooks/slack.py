@@ -8,11 +8,11 @@ from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from app.config import settings
 
 if TYPE_CHECKING:
-    from app.orchestrator import Orchestrator
+    from app.agents.orchestrator_agent import OrchestratorAgent
 
 logger = logging.getLogger(__name__)
 
-orchestrator: "Orchestrator | None" = None
+orchestrator: "OrchestratorAgent | None" = None
 
 slack_app = AsyncApp(
     token=settings.SLACK_BOT_TOKEN,
@@ -20,7 +20,7 @@ slack_app = AsyncApp(
 )
 
 
-def set_orchestrator(orch: "Orchestrator") -> None:
+def set_orchestrator(orch: "OrchestratorAgent") -> None:
     global orchestrator
     orchestrator = orch
 

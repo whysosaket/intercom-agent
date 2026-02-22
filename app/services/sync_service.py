@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from app.services.intercom_client import IntercomClient
-    from app.services.memory_service import MemoryService
+    from app.agents.memzero_agent import MemZeroAgent
+    from app.agents.orchestrator_agent import OrchestratorAgent
 
 logger = logging.getLogger(__name__)
 
@@ -22,15 +22,15 @@ def _strip_html(text: str) -> str:
 class SyncService:
     def __init__(
         self,
-        intercom_client: IntercomClient,
-        memory_service: MemoryService,
+        orchestrator: OrchestratorAgent,
+        memzero_agent: MemZeroAgent,
         max_conversations: int = 1000,
         max_messages_per_conversation: int = 5,
         max_conversation_chars: int = 3000,
         data_dir: str = "data",
     ):
-        self.intercom = intercom_client
-        self.memory = memory_service
+        self.orchestrator = orchestrator
+        self.memzero = memzero_agent
         self.max_conversations = max_conversations
         self.max_messages = max_messages_per_conversation
         self.max_chars = max_conversation_chars
@@ -73,7 +73,7 @@ class SyncService:
         )
 
         while len(conversations) < self.max_conversations:
-            page = await self.intercom.list_conversations(
+            page = await self.orchestrator.list_conversations(
                 per_page=20, starting_after=cursor
             )
             summaries = page.get("conversations", [])
@@ -85,7 +85,7 @@ class SyncService:
                     break
                 conv_id = summary["id"]
                 try:
-                    full_conv = await self.intercom.get_conversation(conv_id)
+                    full_conv = await self.orchestrator.get_conversation(conv_id)
                     conversations.append(full_conv)
                 except Exception:
                     logger.exception(
@@ -167,7 +167,7 @@ class SyncService:
                     skipped_oversized += 1
                     continue
 
-                self.memory.store_global_catalogue_conversation(
+                self.memzero.store_global_catalogue_conversation(
                     formatted_conversation=formatted,
                     conversation_id=conv_id,
                 )

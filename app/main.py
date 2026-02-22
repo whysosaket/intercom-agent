@@ -5,7 +5,6 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
-from app.orchestrator import Orchestrator
 from app.webhooks.intercom import router as intercom_router
 from app.webhooks import intercom as intercom_webhook
 
@@ -23,39 +22,22 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Memory and OpenAI are always real — they're needed for proper testing
-    from app.services.memory_service import MemoryService
-    from app.services.openai_service import OpenAIService
+    from app.agents import (
+        MemZeroAgent,
+        MemoryAgent,
+        ResponseAgent,
+        PostProcessingAgent,
+        SlackAgent,
+        OrchestratorAgent,
+    )
 
-    memory_service = MemoryService(
+    # --- Agents (own SDK clients directly, no service layer) ---
+
+    memzero_agent = MemZeroAgent(
         api_key=settings.MEM0_API_KEY,
         global_user_id=settings.MEM0_GLOBAL_USER_ID,
     )
-    openai_service = OpenAIService(
-        api_key=settings.OPENAI_API_KEY,
-        model=settings.OPENAI_MODEL,
-    )
-
-    if settings.MOCK_MODE:
-        # Mock mode: only Intercom replies and Slack are faked
-        logger.info("Starting in MOCK MODE (Intercom replies & Slack mocked)")
-        from app.services.mock.mock_intercom_client import MockIntercomClient
-        from app.services.mock.mock_slack_service import MockSlackService
-
-        intercom_client = MockIntercomClient()
-        slack_service = MockSlackService()
-    else:
-        from app.services.intercom_client import IntercomClient
-        from app.services.slack_service import SlackService
-
-        intercom_client = IntercomClient(
-            access_token=settings.INTERCOM_ACCESS_TOKEN,
-            admin_id=settings.INTERCOM_ADMIN_ID,
-        )
-        slack_service = SlackService(
-            bot_token=settings.SLACK_BOT_TOKEN,
-            channel_id=settings.SLACK_CHANNEL_ID,
-        )
+    memory_agent = MemoryAgent(memzero_agent=memzero_agent)
 
     # Skill Agent: LLM-driven agent that reads skill documentation to answer
     # technical questions the primary AI can't handle from memory alone
@@ -79,53 +61,68 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Skill agent disabled")
 
-    # Post-processor: LLM agent that refines responses for tone/formatting
-    # and provides a final confidence evaluation before routing
-    post_processor = None
-    if settings.POST_PROCESSOR_ENABLED and settings.OPENAI_API_KEY:
-        from app.services.postprocessor import PostProcessor
-
-        post_processor = PostProcessor(
-            api_key=settings.OPENAI_API_KEY,
-            model=settings.POST_PROCESSOR_MODEL,
-        )
-        logger.info("Post-processor initialized (model=%s)",
-                     settings.POST_PROCESSOR_MODEL)
-    else:
-        logger.info("Post-processor disabled")
-
-    orchestrator = Orchestrator(
-        memory_service=memory_service,
-        openai_service=openai_service,
-        intercom_client=intercom_client,
-        slack_service=slack_service,
-        confidence_threshold=settings.CONFIDENCE_THRESHOLD,
+    response_agent = ResponseAgent(
+        api_key=settings.OPENAI_API_KEY,
+        model=settings.OPENAI_MODEL,
         skill_agent=skill_agent,
-        post_processor=post_processor,
+        confidence_threshold=settings.CONFIDENCE_THRESHOLD,
     )
 
-    # Sync service uses a REAL Intercom client (even in mock mode) for data fetching
+    # Post-processing agent: pass api_key only when enabled
+    postprocessing_agent = PostProcessingAgent(
+        api_key=settings.OPENAI_API_KEY if settings.POST_PROCESSOR_ENABLED else None,
+        model=settings.POST_PROCESSOR_MODEL,
+    )
+    if postprocessing_agent.is_enabled:
+        logger.info("Post-processing agent enabled (model=%s)", settings.POST_PROCESSOR_MODEL)
+    else:
+        logger.info("Post-processing agent disabled")
+
+    slack_agent = SlackAgent(
+        bot_token=settings.SLACK_BOT_TOKEN if not settings.MOCK_MODE else "",
+        channel_id=settings.SLACK_CHANNEL_ID,
+        mock_mode=settings.MOCK_MODE,
+    )
+
+    orchestrator = OrchestratorAgent(
+        memory_agent=memory_agent,
+        response_agent=response_agent,
+        postprocessing_agent=postprocessing_agent,
+        slack_agent=slack_agent,
+        intercom_access_token=settings.INTERCOM_ACCESS_TOKEN if not settings.MOCK_MODE else "",
+        intercom_admin_id=settings.INTERCOM_ADMIN_ID,
+        mock_mode=settings.MOCK_MODE,
+        confidence_threshold=settings.CONFIDENCE_THRESHOLD,
+    )
+
+    await orchestrator.initialize()
+
+    # Sync service uses a REAL (non-mock) OrchestratorAgent for data fetching
     from app.services.sync_service import SyncService
 
-    sync_intercom_client = None
     sync_service = None
 
     if settings.INTERCOM_ACCESS_TOKEN:
-        from app.services.intercom_client import IntercomClient as RealIntercomClient
-
-        sync_intercom_client = RealIntercomClient(
-            access_token=settings.INTERCOM_ACCESS_TOKEN,
-            admin_id=settings.INTERCOM_ADMIN_ID,
+        sync_orchestrator = OrchestratorAgent(
+            memory_agent=memory_agent,
+            response_agent=response_agent,
+            postprocessing_agent=postprocessing_agent,
+            slack_agent=slack_agent,
+            intercom_access_token=settings.INTERCOM_ACCESS_TOKEN,
+            intercom_admin_id=settings.INTERCOM_ADMIN_ID,
+            mock_mode=False,
+            confidence_threshold=settings.CONFIDENCE_THRESHOLD,
         )
         sync_service = SyncService(
-            intercom_client=sync_intercom_client,
-            memory_service=memory_service,
+            orchestrator=sync_orchestrator,
+            memzero_agent=memzero_agent,
             max_conversations=settings.SYNC_MAX_CONVERSATIONS,
             max_messages_per_conversation=settings.SYNC_MAX_MESSAGES_PER_CONVERSATION,
             max_conversation_chars=settings.SYNC_MAX_CONVERSATION_CHARS,
             data_dir=settings.SYNC_DATA_DIR,
         )
     else:
+        sync_orchestrator = None
         logger.warning("No INTERCOM_ACCESS_TOKEN — sync disabled")
 
     intercom_webhook.orchestrator = orchestrator
@@ -135,13 +132,12 @@ async def lifespan(app: FastAPI):
     app.state.orchestrator = orchestrator
     app.state.sync_service = sync_service
 
-    logger.info("All services initialized")
+    logger.info("All agents initialized")
     yield
 
-    if sync_intercom_client:
-        await sync_intercom_client.close()
-    if hasattr(intercom_client, "close"):
-        await intercom_client.close()
+    await orchestrator.shutdown()
+    if sync_orchestrator:
+        await sync_orchestrator.close()
     logger.info("Shutdown complete")
 
 

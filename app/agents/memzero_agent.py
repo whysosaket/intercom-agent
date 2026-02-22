@@ -1,32 +1,29 @@
-import logging
+"""MemZero Agent — sole gateway to Mem0 for all memory operations."""
+
+from __future__ import annotations
 
 from mem0 import MemoryClient
 
-logger = logging.getLogger(__name__)
+from app.agents.base import BaseAgent
 
 
-class MemoryService:
-    def __init__(
-        self,
-        api_key: str,
-        global_user_id: str = "global_catalogue",
-    ):
+class MemZeroAgent(BaseAgent):
+    """Dedicated agent for all Mem0 (MemZero) operations.
+
+    Owns the Mem0 SDK client directly and provides the single point
+    of contact for memory storage, search, and retrieval throughout
+    the system.
+    """
+
+    def __init__(self, api_key: str, global_user_id: str = "global_catalogue"):
+        super().__init__(name="memzero")
         self.client = MemoryClient(api_key=api_key)
         self.global_user_id = global_user_id
 
-    def store_conversation_turn(
-        self,
-        user_id: str,
-        role: str,
-        content: str,
-    ) -> dict:
-        """Store a single conversation turn verbatim (infer=False)."""
-        logger.info("Storing %s turn for user %s", role, user_id)
-        return self.client.add(
-            messages=[{"role": role, "content": content}],
-            user_id=user_id,
-            infer=False,
-        )
+    async def initialize(self) -> None:
+        self.logger.info("MemZero agent initialized")
+
+    # --- Search operations ---
 
     def search_conversation_history(
         self,
@@ -53,6 +50,22 @@ class MemoryService:
             top_k=top_k,
         )
 
+    # --- Store operations ---
+
+    def store_conversation_turn(
+        self,
+        user_id: str,
+        role: str,
+        content: str,
+    ) -> dict:
+        """Store a single conversation turn verbatim (infer=False)."""
+        self.logger.info("Storing %s turn for user %s", role, user_id)
+        return self.client.add(
+            messages=[{"role": role, "content": content}],
+            user_id=user_id,
+            infer=False,
+        )
+
     def store_global_catalogue(
         self,
         question: str,
@@ -60,7 +73,7 @@ class MemoryService:
         conversation_id: str,
     ) -> dict:
         """Store an approved Q&A pair in the global catalogue."""
-        logger.info(
+        self.logger.info(
             "Storing Q&A in global catalogue from conversation %s",
             conversation_id,
         )
@@ -79,12 +92,8 @@ class MemoryService:
         formatted_conversation: str,
         conversation_id: str,
     ) -> dict:
-        """Store an entire conversation as a single user message in the global catalogue.
-
-        The formatted_conversation string contains the full conversation with
-        structured turn prefixes like 'User said: ...' and 'Assistant said: ...'.
-        """
-        logger.info(
+        """Store an entire conversation as a single user message in the global catalogue."""
+        self.logger.info(
             "Storing conversation %s in global catalogue (single-message format)",
             conversation_id,
         )

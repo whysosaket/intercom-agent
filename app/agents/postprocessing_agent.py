@@ -1,19 +1,19 @@
-"""Post-processing agent that refines AI responses for tone and confidence.
+"""Post-Processing Agent — refines responses for tone and confidence.
 
 Acts as both a JUDGE (re-evaluates confidence) and a FIXER (enforces
-formatting, tone, and behavioural constraints from app/prompt.py).
-Runs on every non-empty AI-generated response before routing.
+formatting, tone, and behavioural constraints). Runs on every non-empty
+AI-generated response before routing.
 """
 
+from __future__ import annotations
+
 import json
-import logging
 
 from openai import AsyncOpenAI
 
-from app.models.schemas import PostProcessorInput, PostProcessorOutput
+from app.agents.base import BaseAgent
+from app.models.schemas import GeneratedResponse, PostProcessorInput, PostProcessorOutput
 from app.prompt import SYSTEM_PROMPT as SUPPORT_AGENT_PROMPT
-
-logger = logging.getLogger(__name__)
 
 POST_PROCESSOR_SYSTEM_PROMPT = """\
 You are a post-processing agent. Your primary job is to FIX responses so they read like a real human support agent wrote them. Your secondary job is to lightly evaluate confidence.
@@ -101,42 +101,94 @@ Return ONLY valid JSON:
 """
 
 
-class PostProcessor:
-    """LLM-based agent that refines responses and re-evaluates confidence."""
+class PostProcessingAgent(BaseAgent):
+    """Refines AI responses for tone, formatting, and confidence.
 
-    def __init__(self, api_key: str, model: str = "gpt-5"):
-        self.client = AsyncOpenAI(api_key=api_key)
+    Owns the OpenAI client directly and acts as a two-role LLM agent
+    (Fixer for tone + Judge for confidence re-evaluation).
+    """
+
+    def __init__(self, api_key: str | None = None, model: str = "gpt-5"):
+        super().__init__(name="postprocessing")
+        self._api_key = api_key
         self.model = model
+        self.client: AsyncOpenAI | None = None
+        if api_key:
+            self.client = AsyncOpenAI(api_key=api_key)
 
-    async def process(self, pp_input: PostProcessorInput) -> PostProcessorOutput:
-        """Refine a generated response and produce a final confidence score.
+    @property
+    def is_enabled(self) -> bool:
+        return self.client is not None
 
-        Skips the LLM call entirely if the generated response is empty.
+    async def initialize(self) -> None:
+        status = "enabled" if self.is_enabled else "disabled"
+        self.logger.info("Post-processing agent initialized (%s)", status)
+
+    async def process(
+        self,
+        customer_message: str,
+        generated_response: GeneratedResponse,
+    ) -> GeneratedResponse:
+        """Post-process a generated response.
+
+        If the post-processor is disabled or the response is empty,
+        returns the input unchanged.
         """
-        if not pp_input.generated_response.strip():
-            return PostProcessorOutput(
-                refined_text="",
-                final_confidence=pp_input.original_confidence,
-                reasoning="Empty response -- skipped post-processing.",
+        if not self.is_enabled:
+            return generated_response
+
+        if not generated_response.text.strip():
+            return generated_response
+
+        try:
+            pp_input = PostProcessorInput(
+                customer_message=customer_message,
+                generated_response=generated_response.text,
+                original_confidence=generated_response.confidence,
+                original_reasoning=generated_response.reasoning,
             )
 
-        user_prompt = self._build_user_prompt(pp_input)
+            # Skip LLM call if response is empty
+            if not pp_input.generated_response.strip():
+                return GeneratedResponse(
+                    text="",
+                    confidence=pp_input.original_confidence,
+                    reasoning="Empty response -- skipped post-processing.",
+                )
 
-        response = await self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": POST_PROCESSOR_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            response_format={"type": "json_object"},
-        )
+            user_prompt = self._build_user_prompt(pp_input)
 
-        parsed = json.loads(response.choices[0].message.content)
-        return PostProcessorOutput(
-            refined_text=parsed["refined_text"],
-            final_confidence=float(parsed["final_confidence"]),
-            reasoning=parsed.get("reasoning", ""),
-        )
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": POST_PROCESSOR_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+                response_format={"type": "json_object"},
+            )
+
+            parsed = json.loads(response.choices[0].message.content)
+            pp_output = PostProcessorOutput(
+                refined_text=parsed["refined_text"],
+                final_confidence=float(parsed["final_confidence"]),
+                reasoning=parsed.get("reasoning", ""),
+            )
+
+            self.logger.info(
+                "Post-processor refined response: confidence %.2f -> %.2f",
+                pp_input.original_confidence,
+                pp_output.final_confidence,
+            )
+            return GeneratedResponse(
+                text=pp_output.refined_text,
+                confidence=pp_output.final_confidence,
+                reasoning=generated_response.reasoning,
+            )
+        except Exception:
+            self.logger.exception(
+                "Post-processor failed, using original response"
+            )
+            return generated_response
 
     @staticmethod
     def _build_user_prompt(pp_input: PostProcessorInput) -> str:

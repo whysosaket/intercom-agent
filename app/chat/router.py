@@ -90,77 +90,37 @@ def _find_preceding_user_message(messages: list[ChatMessage], assistant_idx: int
 
 
 async def _handle_user_message(websocket, session, orchestrator, user_text):
-    """Process a user message through the AI pipeline.
+    """Process a user message through the agent pipeline.
 
     Routes by confidence just like production:
-    - High confidence (>= threshold) → auto-sent
-    - Low confidence (< threshold) → pending review with approve/edit/reject
+    - High confidence (>= threshold) -> auto-sent
+    - Low confidence (< threshold) -> pending review with approve/edit/reject
     """
     user_msg = ChatMessage(role="user", content=user_text)
     session.messages.append(user_msg)
 
-    # Search for context (user message is NOT stored yet — deferred until approval/auto-send)
-    conv_history = orchestrator.memory.search_conversation_history(
-        session.user_id, query=user_text
+    # Step 1: Fetch memory context via Memory Agent
+    # (user message is NOT stored yet -- deferred until approval/auto-send)
+    memory_context = await orchestrator.memory_agent.fetch_context(
+        session.user_id, user_text
     )
-    global_matches = orchestrator.memory.search_global_catalogue(user_text)
 
-    result = await orchestrator.ai.generate_response(
+    # Step 2: Generate response via Response Agent
+    result = await orchestrator.response_agent.generate(
         customer_message=user_text,
-        conversation_history=conv_history,
-        relevant_memories=global_matches,
+        memory_context=memory_context,
         contact_info=None,
     )
 
-    final_confidence = orchestrator._adjust_confidence(
-        result.confidence, global_matches
+    # Step 3: Post-process via PostProcessing Agent
+    result = await orchestrator.postprocessing_agent.process(
+        customer_message=user_text,
+        generated_response=result,
     )
 
-    # Skill Agent fallback: if primary AI couldn't answer confidently,
-    # try the skill documentation for a better answer
-    if (
-        orchestrator.skill_agent is not None
-        and final_confidence < orchestrator.threshold
-    ):
-        try:
-            from app.models.schemas import GeneratedResponse
+    final_confidence = result.confidence
 
-            skill_result = await orchestrator.skill_agent.answer(user_text)
-            if (
-                skill_result.answer_text
-                and skill_result.confidence > final_confidence
-            ):
-                result = GeneratedResponse(
-                    text=skill_result.answer_text,
-                    confidence=skill_result.confidence,
-                    reasoning=f"[Skill Agent] {skill_result.reasoning}",
-                )
-                final_confidence = skill_result.confidence
-        except Exception:
-            logger.exception("Skill agent query failed in chat")
-
-    # Post-process: refine tone/formatting and re-evaluate confidence
-    if orchestrator.post_processor is not None and result.text.strip():
-        try:
-            from app.models.schemas import GeneratedResponse, PostProcessorInput
-
-            pp_input = PostProcessorInput(
-                customer_message=user_text,
-                generated_response=result.text,
-                original_confidence=final_confidence,
-                original_reasoning=result.reasoning,
-            )
-            pp_output = await orchestrator.post_processor.process(pp_input)
-            result = GeneratedResponse(
-                text=pp_output.refined_text,
-                confidence=pp_output.final_confidence,
-                reasoning=result.reasoning,
-            )
-            final_confidence = pp_output.final_confidence
-        except Exception:
-            logger.exception("Post-processor failed in chat, using original")
-
-    # Route by confidence — same logic as production orchestrator
+    # Step 4: Route by confidence -- same logic as production orchestrator
     if final_confidence >= orchestrator.threshold:
         # High confidence: auto-send
         ai_msg = ChatMessage(
@@ -172,11 +132,8 @@ async def _handle_user_message(websocket, session, orchestrator, user_text):
         )
         session.messages.append(ai_msg)
         # Store both user message and assistant response (deferred from intake)
-        orchestrator.memory.store_conversation_turn(
-            session.user_id, "user", user_text
-        )
-        orchestrator.memory.store_conversation_turn(
-            session.user_id, "assistant", result.text
+        await orchestrator.memory_agent.store_exchange(
+            session.user_id, user_text, result.text
         )
         await websocket.send_json(
             {
@@ -216,24 +173,22 @@ async def _handle_approve(websocket, session, orchestrator, data):
     # Store both user message and assistant response (deferred from intake)
     user_text = _find_preceding_user_message(session.messages, idx)
     if user_text:
-        orchestrator.memory.store_conversation_turn(
-            session.user_id, "user", user_text
+        await orchestrator.memory_agent.store_exchange(
+            session.user_id, user_text, msg.content
         )
-    orchestrator.memory.store_conversation_turn(
-        session.user_id, "assistant", msg.content
-    )
-    # Approved skill-agent responses are validated technical answers —
+    else:
+        await orchestrator.memory_agent.store_exchange(
+            session.user_id, "", msg.content
+        )
+    # Approved skill-agent responses are validated technical answers --
     # store in global catalogue so future similar questions get answered
     # directly from memory without needing the skill agent again
     if user_text and msg.reasoning.startswith("[Skill Agent]"):
-        formatted = (
-            f"Chat conversation {session.conversation_id}:\n"
-            f"Customer said: {user_text}\n"
-            f"Support said: {msg.content}"
-        )
-        orchestrator.memory.store_global_catalogue_conversation(
-            formatted_conversation=formatted,
+        await orchestrator.memory_agent.store_to_global_catalogue(
             conversation_id=session.conversation_id,
+            customer_message=user_text,
+            response_text=msg.content,
+            source_label="skill-agent-approved",
         )
         logger.info(
             "Approved skill-agent response stored in global catalogue for session %s",
@@ -258,22 +213,20 @@ async def _handle_edit(websocket, session, orchestrator, data):
     # Store both user message and edited assistant response (deferred from intake)
     user_text = _find_preceding_user_message(session.messages, idx)
     if user_text:
-        orchestrator.memory.store_conversation_turn(
-            session.user_id, "user", user_text
+        await orchestrator.memory_agent.store_exchange(
+            session.user_id, user_text, new_text
         )
-    orchestrator.memory.store_conversation_turn(
-        session.user_id, "assistant", new_text
-    )
-    # Edited responses are human-curated — store in global catalogue
+    else:
+        await orchestrator.memory_agent.store_exchange(
+            session.user_id, "", new_text
+        )
+    # Edited responses are human-curated -- store in global catalogue
     if user_text:
-        formatted = (
-            f"Chat conversation {session.conversation_id}:\n"
-            f"Customer said: {user_text}\n"
-            f"Support said: {new_text}"
-        )
-        orchestrator.memory.store_global_catalogue_conversation(
-            formatted_conversation=formatted,
+        await orchestrator.memory_agent.store_to_global_catalogue(
             conversation_id=session.conversation_id,
+            customer_message=user_text,
+            response_text=new_text,
+            source_label="edited",
         )
     await websocket.send_json(
         {

@@ -1,15 +1,39 @@
+"""Slack Agent — handles all Slack-related interactions."""
+
+from __future__ import annotations
+
 import json
-import logging
 
-from slack_sdk.web.async_client import AsyncWebClient
-
-logger = logging.getLogger(__name__)
+from app.agents.base import BaseAgent
 
 
-class SlackService:
-    def __init__(self, bot_token: str, channel_id: str):
-        self.client = AsyncWebClient(token=bot_token)
+class SlackAgent(BaseAgent):
+    """Handles all Slack-related interactions.
+
+    Owns the Slack SDK client directly. Supports mock mode for
+    local development without a real Slack workspace.
+    """
+
+    def __init__(
+        self,
+        bot_token: str = "",
+        channel_id: str = "",
+        mock_mode: bool = False,
+    ):
+        super().__init__(name="slack")
         self.channel_id = channel_id
+        self.mock_mode = mock_mode
+        self.review_requests: list[dict] = []  # stores requests in mock mode
+
+        if not mock_mode and bot_token:
+            from slack_sdk.web.async_client import AsyncWebClient
+            self.client = AsyncWebClient(token=bot_token)
+        else:
+            self.client = None
+
+    async def initialize(self) -> None:
+        mode = "mock" if self.mock_mode else "real"
+        self.logger.info("Slack agent initialized (%s)", mode)
 
     async def send_review_request(
         self,
@@ -20,14 +44,32 @@ class SlackService:
         reasoning: str,
         user_id: str = "",
     ) -> dict:
-        """Post a review message with Approve/Edit/Reject buttons."""
+        """Post a review request to Slack with approve/edit/reject buttons."""
+        self.logger.info(
+            "Sending review request for conversation %s (confidence=%.2f)",
+            conversation_id,
+            confidence,
+        )
+
+        if self.mock_mode or self.client is None:
+            entry = {
+                "conversation_id": conversation_id,
+                "customer_message": customer_message,
+                "ai_response": ai_response,
+                "confidence": confidence,
+                "reasoning": reasoning,
+            }
+            self.review_requests.append(entry)
+            self.logger.info(
+                "[MOCK SLACK] Review request for %s (confidence=%.2f)",
+                conversation_id,
+                confidence,
+            )
+            return {"ok": True}
+
         blocks = self._build_review_blocks(
             conversation_id, customer_message, ai_response, confidence, reasoning,
             user_id=user_id,
-        )
-        logger.info(
-            "Sending review request to Slack for conversation %s",
-            conversation_id,
         )
         result = await self.client.chat_postMessage(
             channel=self.channel_id,

@@ -8,12 +8,12 @@ from app.utils.hmac_verify import verify_intercom_signature
 from app.models.schemas import ContactInfo
 
 if TYPE_CHECKING:
-    from app.orchestrator import Orchestrator
+    from app.agents.orchestrator_agent import OrchestratorAgent
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-orchestrator: "Orchestrator | None" = None
+orchestrator: "OrchestratorAgent | None" = None
 
 
 def _extract_latest_message(payload: dict) -> str:
