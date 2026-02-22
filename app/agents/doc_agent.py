@@ -182,7 +182,7 @@ class DocAgent(BaseAgent):
                     with trace.step(
                         "Skill Agent fallback (from Doc Agent)",
                         "agent_call",
-                        input_summary=f"doc_confidence={doc_response.confidence:.2f if doc_response else 'N/A'}",
+                        input_summary=f"doc_confidence={doc_response.confidence:.2f}" if doc_response else "doc_confidence=N/A",
                     ) as ev:
                         skill_result = await self.skill_agent.answer(question)
                         used = not (
