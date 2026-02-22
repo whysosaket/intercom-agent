@@ -1,5 +1,6 @@
 """Chat UI routes for prompt testing and development."""
 
+import json
 import logging
 
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
@@ -151,6 +152,30 @@ async def _handle_user_message(websocket, session, orchestrator, user_text):
     # Serialize the trace for the frontend
     pipeline_trace = trace.serialize()
     total_duration_ms = trace.total_duration_ms
+    logger.info(
+        "Pipeline trace: %d events, %dms total. Labels: %s",
+        len(pipeline_trace),
+        total_duration_ms,
+        [ev.get("label", "?") for ev in pipeline_trace],
+    )
+    # Validate JSON-serializability; drop problematic events rather than losing all
+    safe_trace = []
+    for i, event in enumerate(pipeline_trace):
+        try:
+            json.dumps(event)
+            safe_trace.append(event)
+        except (TypeError, ValueError) as exc:
+            logger.warning("Trace event %d (%s) not serializable: %s", i, event.get("label", "?"), exc)
+            safe_trace.append({
+                "label": event.get("label", "unknown"),
+                "call_type": event.get("call_type", "unknown"),
+                "status": event.get("status", "completed"),
+                "duration_ms": event.get("duration_ms", 0),
+                "input_summary": event.get("input_summary", ""),
+                "output_summary": event.get("output_summary", ""),
+                "error_message": f"Trace serialization error: {exc}",
+            })
+    pipeline_trace = safe_trace
 
     # Route by confidence — same logic as production orchestrator
     if auto_sent:

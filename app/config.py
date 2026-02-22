@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     # OpenAI
     OPENAI_API_KEY: str = ""
-    OPENAI_MODEL: str = "gpt-4o"
+    OPENAI_MODEL: str = "gpt-5-mini"
 
     # Mem0
     MEM0_API_KEY: str = ""
@@ -32,21 +32,21 @@ class Settings(BaseSettings):
 
     # Skill Agent
     SKILL_AGENT_ENABLED: bool = True
-    SKILL_AGENT_ROUTER_MODEL: str = "gpt-5"
-    SKILL_AGENT_SYNTHESIS_MODEL: str = "gpt-5"
+    SKILL_AGENT_ROUTER_MODEL: str = "gpt-5-mini"
+    SKILL_AGENT_SYNTHESIS_MODEL: str = "gpt-5-mini"
     SKILL_AGENT_MAX_ITERATIONS: int = 4
 
     # Doc Agent (Mintlify Documentation Search)
     DOC_AGENT_ENABLED: bool = True
     DOC_AGENT_MINTLIFY_URL: str = "https://docs.mem0.ai"
-    DOC_AGENT_MODEL: str = "gpt-4o"
+    DOC_AGENT_MODEL: str = "gpt-5-mini"
     DOC_AGENT_CONFIDENCE_THRESHOLD: float = 0.6
     DOC_AGENT_MAX_RESULTS: int = 5
     DOC_AGENT_PRODUCT_DESCRIPTION: str = ""
 
     # Post-Processor
     POST_PROCESSOR_ENABLED: bool = True
-    POST_PROCESSOR_MODEL: str = "gpt-5"
+    POST_PROCESSOR_MODEL: str = "gpt-5-mini"
 
     # Mock / Development
     MOCK_MODE: bool = False

@@ -3,58 +3,59 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Intercom Responder - Chat Test</title>
+    <meta name="theme-color" content="var(--bg-app)">
+    <title>Intercom Responder — Chat</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Geist+Sans:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/chat.css">
 </head>
 <body>
     <div id="app">
-        <header>
+        <header class="app-header">
             <div class="header-left">
-                <h1>Chat Test Console</h1>
-                <span id="session-info" class="session-badge"></span>
+                <h1 class="app-title">Chat</h1>
+                <span id="session-info" class="session-badge" aria-live="polite"></span>
             </div>
             <div class="header-right">
-                <button id="new-session-btn" class="btn btn-primary">New Session</button>
+                <button id="new-session-btn" class="btn btn-primary" type="button">New Session</button>
             </div>
         </header>
 
         <div class="main-layout">
-            <main>
-                <div id="chat-messages">
+            <main class="chat-main">
+                <div id="chat-messages" class="chat-messages" role="log" aria-live="polite">
                     <div class="empty-state">
                         <p>Start a new session to begin testing.</p>
-                        <p class="hint">Click "New Session" above, then type a customer message below.</p>
+                        <p class="hint">Click “New Session” above, then type a customer message below.</p>
                     </div>
                 </div>
-                <div id="input-area">
-                    <textarea id="message-input" placeholder="Type a customer message..." rows="2" disabled></textarea>
-                    <button id="send-btn" class="btn btn-send" disabled>Send</button>
+                <div id="input-area" class="input-area">
+                    <textarea id="message-input" class="message-input" placeholder="Type a customer message…" rows="2" disabled aria-label="Customer message"></textarea>
+                    <button id="send-btn" class="btn btn-send" type="button" disabled>Send</button>
                 </div>
             </main>
 
-            <aside id="detail-panel">
+            <aside id="detail-panel" class="detail-panel" aria-label="Pipeline trace">
                 <div class="panel-header">
-                    <h3>Pipeline Trace</h3>
-                    <span id="panel-total-time" class="panel-meta"></span>
+                    <h2 class="panel-title">Pipeline Trace</h2>
+                    <span id="panel-total-time" class="panel-meta" aria-live="polite"></span>
                 </div>
-                <div id="detail-content">
-                    <p class="hint">Click on an assistant message to see the pipeline trace.</p>
+                <div id="detail-content" class="detail-content">
+                    <p class="hint">Click an assistant message to see the pipeline trace.</p>
                 </div>
             </aside>
         </div>
     </div>
 
-    <div id="edit-modal" class="modal hidden">
-        <div class="modal-backdrop"></div>
+    <div id="edit-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="edit-modal-title">
+        <div class="modal-backdrop" aria-hidden="true"></div>
         <div class="modal-content">
-            <h3>Edit Response</h3>
-            <textarea id="edit-textarea" rows="6"></textarea>
+            <h3 id="edit-modal-title" class="modal-title">Edit Response</h3>
+            <textarea id="edit-textarea" class="edit-textarea" rows="6" aria-label="Edited response text"></textarea>
             <div class="modal-actions">
-                <button id="edit-cancel" class="btn">Cancel</button>
-                <button id="edit-save" class="btn btn-primary">Save & Send</button>
+                <button id="edit-cancel" class="btn btn-ghost" type="button">Cancel</button>
+                <button id="edit-save" class="btn btn-primary" type="button">Save & Send</button>
             </div>
         </div>
     </div>

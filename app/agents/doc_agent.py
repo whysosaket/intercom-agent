@@ -96,7 +96,7 @@ class DocAgent(BaseAgent):
         api_key: str,
         mintlify_url: str = "https://docs.mem0.ai",
         product_description: str = "",
-        model: str = "gpt-4o",
+        model: str = "gpt-5-mini",
         confidence_threshold: float = 0.6,
         skill_agent: SkillAgent | None = None,
         max_results: int = 5,
@@ -252,7 +252,6 @@ class DocAgent(BaseAgent):
                             },
                             {"role": "user", "content": customer_message},
                         ],
-                        max_tokens=100,
                     )
                     rewritten = response.choices[0].message.content.strip()
                     ev.output_summary = f"rewritten: {rewritten[:80]}"
@@ -280,7 +279,6 @@ class DocAgent(BaseAgent):
                         },
                         {"role": "user", "content": customer_message},
                     ],
-                    max_tokens=100,
                 )
                 rewritten = response.choices[0].message.content.strip()
                 self.logger.debug("[Step 1 - Query Rewrite] LLM response: %s", rewritten)
@@ -346,7 +344,6 @@ class DocAgent(BaseAgent):
                                 ),
                             },
                         ],
-                        max_tokens=500,
                         response_format={"type": "json_object"},
                     )
                     raw = response.choices[0].message.content.strip()
@@ -381,7 +378,6 @@ class DocAgent(BaseAgent):
                             ),
                         },
                     ],
-                    max_tokens=500,
                     response_format={"type": "json_object"},
                 )
                 raw = response.choices[0].message.content.strip()

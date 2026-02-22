@@ -29,7 +29,7 @@ class ResponseAgent(BaseAgent):
     def __init__(
         self,
         api_key: str,
-        model: str = "gpt-4o",
+        model: str = "gpt-5-mini",
         skill_agent: SkillAgent | None = None,
         confidence_threshold: float = 0.8,
     ):

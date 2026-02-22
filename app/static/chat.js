@@ -242,7 +242,7 @@ function appendSystemMessage(content) {
 
     const bubble = document.createElement("div");
     bubble.className = "message assistant";
-    bubble.style.color = "#ef4444";
+    bubble.style.color = "var(--zinc-600)";
     bubble.style.fontStyle = "italic";
     bubble.textContent = content;
 
@@ -308,17 +308,20 @@ function removeTypingIndicator() {
 
 // ─── Pipeline Trace Panel ───
 
-// Map call_type to display icon/color
+// Map call_type to display icon (monochrome zinc palette)
+const ZINC_500 = "#71717a";
+const ZINC_600 = "#52525b";
+const ZINC_700 = "#3f3f46";
 const CALL_TYPE_CONFIG = {
-    mem0_search: { icon: "M", color: "#8b5cf6", label: "Mem0" },
-    llm_call: { icon: "AI", color: "#4f6ef7", label: "LLM" },
-    http_fetch: { icon: "H", color: "#06b6d4", label: "HTTP" },
-    computation: { icon: "C", color: "#10b981", label: "Compute" },
-    agent_call: { icon: "A", color: "#f59e0b", label: "Agent" },
+    mem0_search: { icon: "M", color: ZINC_600, label: "Mem0" },
+    llm_call: { icon: "AI", color: ZINC_700, label: "LLM" },
+    http_fetch: { icon: "H", color: ZINC_500, label: "HTTP" },
+    computation: { icon: "C", color: ZINC_600, label: "Compute" },
+    agent_call: { icon: "A", color: ZINC_700, label: "Agent" },
 };
 
 function getCallTypeConfig(callType) {
-    return CALL_TYPE_CONFIG[callType] || { icon: "?", color: "#8b90a0", label: callType };
+    return CALL_TYPE_CONFIG[callType] || { icon: "?", color: ZINC_500, label: callType };
 }
 
 function showPipelineTrace(msgId, content, confidence, reasoning) {
@@ -348,6 +351,9 @@ function showPipelineTrace(msgId, content, confidence, reasoning) {
     html += buildResponseSummary(content, confidence);
 
     detailContent.innerHTML = html;
+
+    // Scroll the detail panel to the top to show all events
+    detailContent.scrollTop = 0;
 
     // Attach expand/collapse click handlers
     detailContent.querySelectorAll('.event-header').forEach(header => {
@@ -612,9 +618,9 @@ function getConfidenceClass(confidence) {
 }
 
 function getConfidenceColor(confidence) {
-    if (confidence >= 0.8) return '#10b981';
-    if (confidence >= 0.5) return '#f59e0b';
-    return '#ef4444';
+    if (confidence >= 0.8) return "#52525b"; /* zinc-600 */
+    if (confidence >= 0.5) return "#71717a"; /* zinc-500 */
+    return "#3f3f46"; /* zinc-700 */
 }
 
 function scrollToBottom() {

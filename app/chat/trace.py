@@ -4,12 +4,37 @@ Provides a lightweight mechanism for agents to report sub-step traces
 (individual LLM calls, Mem0 searches, HTTP fetches, etc.) during pipeline
 execution. The router creates a TraceCollector per request, passes it to
 agents, and serializes all collected events into the WebSocket response.
+"""
 
 from __future__ import annotations
 
+import json
+import logging
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
+
+
+def _safe_json_value(obj: object) -> object:
+    """Recursively convert an object to JSON-safe primitives.
+
+    Mem0/OpenAI may return pydantic models or other non-serializable objects
+    inside the details dict. This ensures everything survives ``json.dumps``.
+    """
+    if obj is None or isinstance(obj, (bool, int, float, str)):
+        return obj
+    if isinstance(obj, dict):
+        return {str(k): _safe_json_value(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_safe_json_value(item) for item in obj]
+    # Fallback: try to convert pydantic / dataclass / arbitrary objects
+    if hasattr(obj, "model_dump"):
+        return _safe_json_value(obj.model_dump())
+    if hasattr(obj, "__dict__"):
+        return _safe_json_value(vars(obj))
+    return str(obj)
 
 
 @dataclass
@@ -37,7 +62,7 @@ class TraceEvent:
         if self.output_summary:
             d["output_summary"] = self.output_summary
         if self.details:
-            d["details"] = self.details
+            d["details"] = _safe_json_value(self.details)
         if self.error_message:
             d["error_message"] = self.error_message
         return d
@@ -102,6 +127,10 @@ class TraceCollector:
     def serialize(self) -> list[dict]:
         """Serialize all events to a list of dicts for JSON transport."""
         return [ev.to_dict() for ev in self._events]
+
+    def __bool__(self) -> bool:
+        """Always truthy so ``if trace:`` checks work even with 0 events."""
+        return True
 
     def __len__(self) -> int:
         return len(self._events)
