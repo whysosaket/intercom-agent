@@ -119,6 +119,37 @@ After fixing, evaluate the response and set a final_confidence score.
 
 ---
 
+## RELEVANCE CHECK (CRITICAL — THIS IS THE MOST IMPORTANT CHECK)
+
+After fixing tone and evaluating confidence, perform one final check:
+
+DOES THE REFINED RESPONSE ACTUALLY ADDRESS THE CUSTOMER'S QUESTION?
+
+You will be provided with Recent Conversation History (if available). USE IT to understand what the customer is actually asking about. Follow-up messages like "how soon?", "when?", "what about pricing?" ONLY make sense in the context of the previous conversation.
+
+STEP 1: Read the conversation history to understand the topic being discussed.
+STEP 2: Read the customer's current message in the context of that history.
+STEP 3: Ask yourself: does the generated response actually answer what the customer is asking about?
+
+A response FAILS the relevance check if:
+- It answers a completely different question than what was asked
+- It provides general information when a specific answer was needed
+- It talks about an unrelated topic (e.g., customer asked about renaming an organization, response talks about API setup or memory addition)
+- The customer asked a follow-up question (e.g., "how soon?", "when can I expect that?") and the response provides information about a different topic instead of addressing the follow-up
+- The response provides setup/getting-started instructions, code examples, or API documentation when the customer asked about timelines, availability, account changes, or other non-technical topics
+- The response topic has NO connection to the conversation history topic
+
+If the response FAILS the relevance check:
+- Set response_addresses_question to false
+- Set refined_text to an empty string
+- Set final_confidence to 0.2
+- Set reasoning to explain why the response does not address the question
+
+If the response PASSES the relevance check:
+- Set response_addresses_question to true
+
+---
+
 ## PLAIN TEXT FORMATTING FOR INTERCOM
 
 The refined_text will be sent directly into Intercom chat, which displays plain text.
@@ -167,9 +198,10 @@ BAD example (everything on one line, no \\n — DO NOT do this):
 
 Return ONLY valid JSON:
 {
-    "refined_text": "plain-text with \\n for line breaks (or empty string if entirely unhelpful)",
+    "refined_text": "plain-text with \\n for line breaks (or empty string if irrelevant or unhelpful)",
     "final_confidence": 0.0,
-    "reasoning": "brief note on what you changed"
+    "reasoning": "brief note on what you changed",
+    "response_addresses_question": true
 }
 """
 
@@ -202,6 +234,7 @@ class PostProcessingAgent(BaseAgent):
         customer_message: str,
         generated_response: GeneratedResponse,
         trace: TraceCollector | None = None,
+        conversation_history: list[dict] | None = None,
     ) -> GeneratedResponse:
         """Post-process a generated response.
 
@@ -220,6 +253,7 @@ class PostProcessingAgent(BaseAgent):
                 generated_response=generated_response.text,
                 original_confidence=generated_response.confidence,
                 original_reasoning=generated_response.reasoning,
+                conversation_history=conversation_history or [],
             )
 
             # Skip LLM call if response is empty
@@ -253,6 +287,7 @@ class PostProcessingAgent(BaseAgent):
                         refined_text=parsed["refined_text"],
                         final_confidence=float(parsed["final_confidence"]),
                         reasoning=parsed.get("reasoning", ""),
+                        response_addresses_question=parsed.get("response_addresses_question", True),
                     )
                     ev.output_summary = (
                         f"confidence {pp_input.original_confidence:.2f} -> {pp_output.final_confidence:.2f}"
@@ -263,6 +298,7 @@ class PostProcessingAgent(BaseAgent):
                         "confidence_after": pp_output.final_confidence,
                         "confidence_delta": round(pp_output.final_confidence - pp_input.original_confidence, 4),
                         "text_changed": pp_input.generated_response != pp_output.refined_text,
+                        "response_addresses_question": pp_output.response_addresses_question,
                         "pp_reasoning": pp_output.reasoning,
                         "refined_text_preview": pp_output.refined_text[:200],
                         "raw_response": raw[:500],
@@ -287,6 +323,7 @@ class PostProcessingAgent(BaseAgent):
                     refined_text=parsed["refined_text"],
                     final_confidence=float(parsed["final_confidence"]),
                     reasoning=parsed.get("reasoning", ""),
+                    response_addresses_question=parsed.get("response_addresses_question", True),
                 )
 
             self.logger.info(
@@ -298,6 +335,16 @@ class PostProcessingAgent(BaseAgent):
                 text=pp_output.refined_text,
                 confidence=pp_output.final_confidence,
                 reasoning=generated_response.reasoning,
+                requires_human_intervention=(
+                    generated_response.requires_human_intervention
+                    or not pp_output.response_addresses_question
+                ),
+                is_followup=generated_response.is_followup,
+                followup_context=generated_response.followup_context,
+                answerable_from_context=(
+                    generated_response.answerable_from_context
+                    and pp_output.response_addresses_question
+                ),
             )
         except Exception:
             self.logger.exception(
@@ -308,11 +355,19 @@ class PostProcessingAgent(BaseAgent):
     @staticmethod
     def _build_user_prompt(pp_input: PostProcessorInput) -> str:
         """Build the user message with all context the post-processor needs."""
-        return (
-            f"## Customer Message\n\n{pp_input.customer_message}\n\n"
-            f"---\n\n"
-            f"## Generated Response\n\n{pp_input.generated_response}\n\n"
-            f"---\n\n"
-            f"## Original Confidence: {pp_input.original_confidence}\n\n"
-            f"## Original Reasoning\n\n{pp_input.original_reasoning}"
-        )
+        parts = []
+
+        if pp_input.conversation_history:
+            parts.append("## Recent Conversation History\n")
+            for mem in pp_input.conversation_history:
+                parts.append(mem.get("memory", ""))
+            parts.append("\n---\n")
+
+        parts.append(f"## Customer Message\n\n{pp_input.customer_message}\n\n")
+        parts.append("---\n\n")
+        parts.append(f"## Generated Response\n\n{pp_input.generated_response}\n\n")
+        parts.append("---\n\n")
+        parts.append(f"## Original Confidence: {pp_input.original_confidence}\n\n")
+        parts.append(f"## Original Reasoning\n\n{pp_input.original_reasoning}")
+
+        return "\n".join(parts)

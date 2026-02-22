@@ -189,6 +189,7 @@ class OrchestratorAgent(BaseAgent):
             result = await self.postprocessing_agent.process(
                 customer_message=message_body,
                 generated_response=result,
+                conversation_history=memory_context.conversation_history,
             )
 
             # Step 4: Route based on confidence

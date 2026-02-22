@@ -101,9 +101,15 @@ class ResponseAgent(BaseAgent):
         )
 
         # Step 3: Skill Agent fallback
+        # Only skip fallback if the user explicitly asked for a human agent.
+        # When answerable_from_context is false, it just means the primary
+        # model's FAQ/memory didn't have the answer — the skill/doc agent
+        # can still search documentation and find it.
+        skip_fallback = result.requires_human_intervention
         if (
             self.skill_agent is not None
             and adjusted_confidence < self.threshold
+            and not skip_fallback
         ):
             self.logger.info(
                 "Primary AI below threshold (confidence=%.2f), trying skill agent",
@@ -137,6 +143,10 @@ class ResponseAgent(BaseAgent):
                                 text=skill_result.answer_text,
                                 confidence=skill_result.confidence,
                                 reasoning=f"[Skill Agent] {skill_result.reasoning}",
+                                is_followup=result.is_followup,
+                                followup_context=result.followup_context,
+                                answerable_from_context=True,
+                                requires_human_intervention=False,
                             )
                             adjusted_confidence = skill_result.confidence
                 else:
@@ -149,6 +159,10 @@ class ResponseAgent(BaseAgent):
                             text=skill_result.answer_text,
                             confidence=skill_result.confidence,
                             reasoning=f"[Skill Agent] {skill_result.reasoning}",
+                            is_followup=result.is_followup,
+                            followup_context=result.followup_context,
+                            answerable_from_context=True,
+                            requires_human_intervention=False,
                         )
                         adjusted_confidence = skill_result.confidence
                         self.logger.info(
@@ -159,18 +173,28 @@ class ResponseAgent(BaseAgent):
             except Exception:
                 self.logger.exception("Skill agent query failed")
         elif trace and self.skill_agent is not None:
+            if skip_fallback:
+                skip_reason = "skipped (user requested human intervention)"
+                skip_input = f"requires_human={result.requires_human_intervention}"
+            else:
+                skip_reason = "skipped (confidence above threshold)"
+                skip_input = f"confidence {adjusted_confidence:.2f} >= threshold {self.threshold:.2f}"
             with trace.step(
                 "Skill/Doc Agent fallback",
                 "agent_call",
-                input_summary=f"confidence {adjusted_confidence:.2f} >= threshold {self.threshold:.2f}",
+                input_summary=skip_input,
             ) as ev:
                 ev.status = "skipped"
-                ev.output_summary = "skipped (confidence above threshold)"
+                ev.output_summary = skip_reason
 
         return GeneratedResponse(
             text=result.text,
             confidence=adjusted_confidence,
             reasoning=result.reasoning,
+            requires_human_intervention=result.requires_human_intervention,
+            is_followup=result.is_followup,
+            followup_context=result.followup_context,
+            answerable_from_context=result.answerable_from_context,
         )
 
     async def _call_openai(
@@ -211,6 +235,10 @@ class ResponseAgent(BaseAgent):
                     "confidence": parsed["confidence"],
                     "reasoning": parsed.get("reasoning", ""),
                     "response_preview": parsed["response_text"][:200],
+                    "requires_human_intervention": parsed.get("requires_human_intervention", False),
+                    "is_followup": parsed.get("is_followup", False),
+                    "followup_context": parsed.get("followup_context", ""),
+                    "answerable_from_context": parsed.get("answerable_from_context", True),
                     "usage": {
                         "prompt_tokens": response.usage.prompt_tokens if response.usage else None,
                         "completion_tokens": response.usage.completion_tokens if response.usage else None,
@@ -220,6 +248,10 @@ class ResponseAgent(BaseAgent):
                     text=parsed["response_text"],
                     confidence=float(parsed["confidence"]),
                     reasoning=parsed.get("reasoning", ""),
+                    requires_human_intervention=parsed.get("requires_human_intervention", False),
+                    is_followup=parsed.get("is_followup", False),
+                    followup_context=parsed.get("followup_context", ""),
+                    answerable_from_context=parsed.get("answerable_from_context", True),
                 )
 
         response = await self.client.chat.completions.create(
@@ -238,4 +270,8 @@ class ResponseAgent(BaseAgent):
             text=parsed["response_text"],
             confidence=float(parsed["confidence"]),
             reasoning=parsed.get("reasoning", ""),
+            requires_human_intervention=parsed.get("requires_human_intervention", False),
+            is_followup=parsed.get("is_followup", False),
+            followup_context=parsed.get("followup_context", ""),
+            answerable_from_context=parsed.get("answerable_from_context", True),
         )

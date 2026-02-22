@@ -83,6 +83,28 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
         logger.info("Chat WebSocket disconnected for session %s", session_id)
 
 
+def _safe_serialize_trace(trace: TraceCollector) -> list[dict]:
+    """Serialize trace events, dropping non-serializable ones gracefully."""
+    pipeline_trace = trace.serialize()
+    safe_trace = []
+    for i, event in enumerate(pipeline_trace):
+        try:
+            json.dumps(event)
+            safe_trace.append(event)
+        except (TypeError, ValueError) as exc:
+            logger.warning("Trace event %d (%s) not serializable: %s", i, event.get("label", "?"), exc)
+            safe_trace.append({
+                "label": event.get("label", "unknown"),
+                "call_type": event.get("call_type", "unknown"),
+                "status": event.get("status", "completed"),
+                "duration_ms": event.get("duration_ms", 0),
+                "input_summary": event.get("input_summary", ""),
+                "output_summary": event.get("output_summary", ""),
+                "error_message": f"Trace serialization error: {exc}",
+            })
+    return safe_trace
+
+
 def _find_preceding_user_message(messages: list[ChatMessage], assistant_idx: int) -> str:
     """Walk backward to find the most recent user message before this assistant response."""
     for i in range(assistant_idx - 1, -1, -1):
@@ -125,6 +147,7 @@ async def _handle_user_message(websocket, session, orchestrator, user_text):
         customer_message=user_text,
         generated_response=result,
         trace=trace,
+        conversation_history=memory_context.conversation_history,
     )
 
     # Step 4: Routing decision — record as a trace event
@@ -150,7 +173,7 @@ async def _handle_user_message(websocket, session, orchestrator, user_text):
         }
 
     # Serialize the trace for the frontend
-    pipeline_trace = trace.serialize()
+    pipeline_trace = _safe_serialize_trace(trace)
     total_duration_ms = trace.total_duration_ms
     logger.info(
         "Pipeline trace: %d events, %dms total. Labels: %s",
@@ -158,24 +181,6 @@ async def _handle_user_message(websocket, session, orchestrator, user_text):
         total_duration_ms,
         [ev.get("label", "?") for ev in pipeline_trace],
     )
-    # Validate JSON-serializability; drop problematic events rather than losing all
-    safe_trace = []
-    for i, event in enumerate(pipeline_trace):
-        try:
-            json.dumps(event)
-            safe_trace.append(event)
-        except (TypeError, ValueError) as exc:
-            logger.warning("Trace event %d (%s) not serializable: %s", i, event.get("label", "?"), exc)
-            safe_trace.append({
-                "label": event.get("label", "unknown"),
-                "call_type": event.get("call_type", "unknown"),
-                "status": event.get("status", "completed"),
-                "duration_ms": event.get("duration_ms", 0),
-                "input_summary": event.get("input_summary", ""),
-                "output_summary": event.get("output_summary", ""),
-                "error_message": f"Trace serialization error: {exc}",
-            })
-    pipeline_trace = safe_trace
 
     # Route by confidence — same logic as production orchestrator
     if auto_sent:

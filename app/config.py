@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     # OpenAI
     OPENAI_API_KEY: str = ""
-    OPENAI_MODEL: str = "gpt-5-mini"
+    OPENAI_MODEL: str = "gpt-5"
 
     # Mem0
     MEM0_API_KEY: str = ""
