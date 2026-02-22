@@ -56,6 +56,27 @@ Take the generated response and rewrite it to be clean, concise, and human-sound
 
 ---
 
+## RESPONSE SIZE AND CODE POLICY (SECONDARY FIXER)
+
+After applying the tone fixes above, also enforce these constraints:
+
+### Language filtering
+- If the response contains code blocks in languages other than Python (JavaScript, cURL, bash curl commands, TypeScript, Ruby, etc.), remove those non-Python code blocks entirely.
+- Keep only Python code examples. If no Python example exists but other languages do, remove the code blocks and describe the API call in plain text.
+
+### Code size limits
+- If any single code block exceeds approximately 10 lines, truncate it to the essential lines that answer the question. Add a brief note like "See [full reference](url)" pointing to the relevant documentation if a URL is available in the response.
+- If the response reads like a full implementation or tutorial rather than a concise answer, condense it: keep the key explanation (2-5 sentences) and at most one small code snippet.
+
+### Link preservation
+- Preserve all documentation links (markdown URLs) that appear in the response. Do not remove or alter them.
+- If the response lacks links but mentions documentation concepts, do not add links that were not in the original.
+
+### Exception for explicit detail requests
+- If the customer message explicitly asks for "full code", "complete implementation", "detailed code example", "show me everything", or similar phrases requesting comprehensive code, then preserve the code blocks as-is. Only apply language filtering (remove non-Python) but do not truncate for size.
+
+---
+
 ## JUDGE ROLE (SECONDARY — light touch)
 
 After fixing, evaluate the response and set a final_confidence score.
