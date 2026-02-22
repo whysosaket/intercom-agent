@@ -71,6 +71,11 @@ After applying the tone fixes above, also enforce these constraints:
 - Preserve all documentation links (markdown URLs) that appear in the response. Do not remove or alter them.
 - If the response lacks links but mentions documentation concepts, do not add links that were not in the original.
 
+### Obsolete parameters removal
+- The org_id and project_id parameters for MemoryClient are obsolete and MUST be removed from any code snippet.
+- If you see MemoryClient(api_key="...", org_id="...", project_id="..."), rewrite it as MemoryClient(api_key="...").
+- This applies to any variation: keyword arguments, positional arguments, or comments mentioning org_id/project_id for MemoryClient.
+
 ### Exception for explicit detail requests
 - If the customer message explicitly asks for "full code", "complete implementation", "detailed code example", "show me everything", or similar phrases requesting comprehensive code, then preserve the code blocks as-is. Only apply language filtering (remove non-Python) but do not truncate for size.
 
@@ -108,11 +113,55 @@ After fixing, evaluate the response and set a final_confidence score.
 
 ---
 
+## PLAIN TEXT FORMATTING FOR INTERCOM
+
+The refined_text will be sent directly into Intercom chat, which displays plain text.
+Do NOT use markdown or HTML. Output clean, readable plain text only.
+
+CRITICAL: The refined_text is a JSON string. You MUST use literal \\n characters to represent newlines. Every line break must be an explicit \\n in the JSON string. Without these, the entire response will appear as one long unreadable line in Intercom.
+
+### Spacing rules (use \\n characters in the JSON string)
+- Separate paragraphs with TWO newlines (\\n\\n) to create a blank line between them.
+- Add TWO newlines (\\n\\n) before any code snippet and TWO newlines (\\n\\n) after it.
+- Add TWO newlines (\\n\\n) before any list and TWO newlines (\\n\\n) after it.
+- Each line of code must be on its own line (separated by \\n).
+- Each list item must be on its own line (separated by \\n).
+
+### Code
+- Do NOT use backticks, triple backticks, or any markdown code fences.
+- Write each line of code on its own line, indented with 2 spaces for readability.
+- ALWAYS put a blank line (\\n\\n) before the first line of code and after the last line of code.
+
+### Links
+- Write URLs as plain text. Example: https://docs.mem0.ai/platform/quickstart
+- If there is link text, write it as: link text - https://url
+
+### Lists
+- Use a simple dash and space for bullets, each on its own line.
+- Use numbers for ordered lists, each on its own line.
+
+### What NOT to use
+- No markdown: no **, no `, no ```, no [], no (), no #, no >
+- No HTML tags of any kind.
+- No special formatting characters.
+
+---
+
 ## OUTPUT FORMAT
+
+Return ONLY valid JSON. The refined_text MUST contain \\n for line breaks.
+
+EXAMPLE of correct JSON output (note the \\n usage):
+
+{"refined_text": "You can enable Graph Memory by passing enable_graph=True in your API call.\\n\\n  from mem0 import MemoryClient\\n  client = MemoryClient(api_key=\\"your-key\\")\\n  client.add(messages, user_id=\\"user1\\", enable_graph=True)\\n\\nThis stores both vector and graph memories for the given user.\\n\\nFor more details: https://docs.mem0.ai/features/graph-memory", "final_confidence": 0.85, "reasoning": "Cleaned tone, formatted code on separate lines"}
+
+BAD example (everything on one line, no \\n — DO NOT do this):
+
+{"refined_text": "You can enable Graph Memory by passing enable_graph=True. from mem0 import MemoryClient client = MemoryClient(api_key=\\"key\\") This stores both vector and graph memories.", "final_confidence": 0.85, "reasoning": "..."}
 
 Return ONLY valid JSON:
 {
-    "refined_text": "the cleaned-up response text (or empty string if entirely unhelpful)",
+    "refined_text": "plain-text with \\n for line breaks (or empty string if entirely unhelpful)",
     "final_confidence": 0.0,
     "reasoning": "brief note on what you changed"
 }
