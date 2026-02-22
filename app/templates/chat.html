@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intercom Responder - Chat Test</title>
+    <link rel="stylesheet" href="/static/chat.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <div class="header-left">
+                <h1>Chat Test Console</h1>
+                <span id="session-info" class="session-badge"></span>
+            </div>
+            <div class="header-right">
+                <button id="new-session-btn" class="btn btn-primary">New Session</button>
+            </div>
+        </header>
+
+        <div class="main-layout">
+            <main>
+                <div id="chat-messages">
+                    <div class="empty-state">
+                        <p>Start a new session to begin testing.</p>
+                        <p class="hint">Click "New Session" above, then type a customer message below.</p>
+                    </div>
+                </div>
+                <div id="input-area">
+                    <textarea id="message-input" placeholder="Type a customer message..." rows="2" disabled></textarea>
+                    <button id="send-btn" class="btn btn-send" disabled>Send</button>
+                </div>
+            </main>
+
+            <aside id="detail-panel">
+                <h3>Response Details</h3>
+                <div id="detail-content">
+                    <p class="hint">Click on an assistant message to see details.</p>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <div id="edit-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+            <h3>Edit Response</h3>
+            <textarea id="edit-textarea" rows="6"></textarea>
+            <div class="modal-actions">
+                <button id="edit-cancel" class="btn">Cancel</button>
+                <button id="edit-save" class="btn btn-primary">Save & Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/chat.js"></script>
+</body>
+</html>
