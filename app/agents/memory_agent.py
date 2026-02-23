@@ -7,9 +7,15 @@ from typing import TYPE_CHECKING
 
 from app.agents.base import BaseAgent
 from app.agents.memzero_agent import MemZeroAgent
+from app.company import company_config
 
 if TYPE_CHECKING:
     from app.chat.trace import TraceCollector
+
+# Mem0 score threshold for a "near-exact" knowledge base match.
+_NEAR_EXACT_MATCH_SCORE = 0.95
+# Confidence boost applied when a near-exact match is found.
+_NEAR_EXACT_MATCH_BOOST = 0.1
 
 
 @dataclass
@@ -92,8 +98,9 @@ class MemoryAgent(BaseAgent):
         source_label: str = "intercom",
     ) -> None:
         """Store a conversation in the global catalogue for future retrieval."""
+        platform = company_config.support_platform_name
         formatted = (
-            f"Intercom conversation {conversation_id}:\n"
+            f"{platform} conversation {conversation_id}:\n"
             f"Customer said: {customer_message}\n"
             f"Support said: {response_text}"
         )
@@ -116,4 +123,4 @@ class MemoryAgent(BaseAgent):
         if not global_matches:
             return 0.0
         top_score = max(m.get("score", 0) for m in global_matches)
-        return 0.1 if top_score >= 0.95 else 0.0
+        return _NEAR_EXACT_MATCH_BOOST if top_score >= _NEAR_EXACT_MATCH_SCORE else 0.0

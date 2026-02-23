@@ -22,12 +22,13 @@ Purpose:
 
 import argparse
 import json
+import os
 import sys
 import urllib.request
 import urllib.parse
 import urllib.error
 
-DOCS_BASE = "https://docs.mem0.ai"
+DOCS_BASE = os.environ.get("COMPANY_DOCUMENTATION_URL", "https://docs.mem0.ai")
 SEARCH_ENDPOINT = f"{DOCS_BASE}/api/search"
 LLMS_INDEX = f"{DOCS_BASE}/llms.txt"
 

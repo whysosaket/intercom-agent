@@ -2,7 +2,6 @@
 candidate responses, review/edit/approve, and send back via Intercom."""
 
 import asyncio
-import json
 import logging
 from typing import Any
 
@@ -14,6 +13,7 @@ from pydantic import BaseModel
 
 from app.chat.trace import TraceCollector
 from app.services.sync_service import extract_messages
+from app.utils.trace_utils import safe_serialize_trace
 
 logger = logging.getLogger(__name__)
 
@@ -153,31 +153,6 @@ async def fetch_conversations(request: Request):
         raise HTTPException(status_code=500, detail="Failed to fetch conversations")
 
 
-def _safe_serialize_trace(trace: TraceCollector) -> list[dict]:
-    """Serialize trace events, dropping non-serializable ones gracefully."""
-    pipeline_trace = trace.serialize()
-    safe_trace = []
-    for i, event in enumerate(pipeline_trace):
-        try:
-            json.dumps(event)
-            safe_trace.append(event)
-        except (TypeError, ValueError) as exc:
-            logger.warning(
-                "Trace event %d (%s) not serializable: %s",
-                i, event.get("label", "?"), exc,
-            )
-            safe_trace.append({
-                "label": event.get("label", "unknown"),
-                "call_type": event.get("call_type", "unknown"),
-                "status": event.get("status", "completed"),
-                "duration_ms": event.get("duration_ms", 0),
-                "input_summary": event.get("input_summary", ""),
-                "output_summary": event.get("output_summary", ""),
-                "error_message": f"Trace serialization error: {exc}",
-            })
-    return safe_trace
-
-
 async def _generate_for_conversation(
     orchestrator,
     conversation_id: str,
@@ -230,7 +205,7 @@ async def _generate_for_conversation(
                     "decision": "auto_sent" if auto_sent else "pending_review",
                 }
 
-            pipeline_trace = _safe_serialize_trace(trace)
+            pipeline_trace = safe_serialize_trace(trace)
 
             candidates.append({
                 "index": i,
@@ -250,7 +225,7 @@ async def _generate_for_conversation(
                 "text": "",
                 "confidence": 0.0,
                 "reasoning": "Generation failed",
-                "pipeline_trace": _safe_serialize_trace(trace),
+                "pipeline_trace": safe_serialize_trace(trace),
                 "total_duration_ms": trace.total_duration_ms,
                 "error": True,
             })

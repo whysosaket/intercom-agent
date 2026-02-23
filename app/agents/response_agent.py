@@ -16,6 +16,9 @@ if TYPE_CHECKING:
     from app.chat.trace import TraceCollector
     from skill_consumer import SkillAgent
 
+# Minimum raw confidence before a memory boost can be applied.
+_MEMORY_BOOST_MIN_CONFIDENCE = 0.7
+
 
 class ResponseAgent(BaseAgent):
     """Generates AI responses using OpenAI and memory context.
@@ -52,7 +55,7 @@ class ResponseAgent(BaseAgent):
         """Generate an AI response with confidence score.
 
         1. Call OpenAI with context
-        2. Apply confidence boost from memory (only if AI confidence >= 0.7)
+        2. Apply confidence boost from memory (only if AI confidence >= threshold)
         3. If below threshold, try Skill Agent fallback
         """
         # Step 1: Primary OpenAI generation
@@ -69,7 +72,7 @@ class ResponseAgent(BaseAgent):
         adjusted_confidence = result.confidence
         if (
             memory_context.adjusted_confidence_boost > 0
-            and adjusted_confidence >= 0.7
+            and adjusted_confidence >= _MEMORY_BOOST_MIN_CONFIDENCE
         ):
             adjusted_confidence = min(
                 adjusted_confidence + memory_context.adjusted_confidence_boost,
@@ -101,11 +104,34 @@ class ResponseAgent(BaseAgent):
         )
 
         # Step 3: Skill Agent fallback
+        result, adjusted_confidence = await self._try_skill_fallback(
+            result, adjusted_confidence, customer_message, trace
+        )
+
+        return GeneratedResponse(
+            text=result.text,
+            confidence=adjusted_confidence,
+            reasoning=result.reasoning,
+            requires_human_intervention=result.requires_human_intervention,
+            is_followup=result.is_followup,
+            followup_context=result.followup_context,
+            answerable_from_context=result.answerable_from_context,
+        )
+
+    async def _try_skill_fallback(
+        self,
+        result: GeneratedResponse,
+        adjusted_confidence: float,
+        customer_message: str,
+        trace: TraceCollector | None = None,
+    ) -> tuple[GeneratedResponse, float]:
+        """Attempt skill agent fallback if confidence is below threshold.
+
+        Returns the (possibly updated) result and adjusted confidence.
+        """
         # Only skip fallback if the user explicitly asked for a human agent.
-        # When answerable_from_context is false, it just means the primary
-        # model's FAQ/memory didn't have the answer — the skill/doc agent
-        # can still search documentation and find it.
         skip_fallback = result.requires_human_intervention
+
         if (
             self.skill_agent is not None
             and adjusted_confidence < self.threshold
@@ -116,19 +142,26 @@ class ResponseAgent(BaseAgent):
                 adjusted_confidence,
             )
             try:
+                # DocAgent.answer() accepts trace; bare SkillAgent.answer() does not.
+                has_trace_param = hasattr(self.skill_agent, "answer")
+                try:
+                    skill_result = await self.skill_agent.answer(
+                        customer_message, trace=trace
+                    )
+                except TypeError:
+                    skill_result = await self.skill_agent.answer(customer_message)
+
+                used = bool(
+                    skill_result.answer_text
+                    and skill_result.confidence > adjusted_confidence
+                )
+
                 if trace:
                     with trace.step(
                         "Skill/Doc Agent fallback",
                         "agent_call",
                         input_summary=f"confidence {adjusted_confidence:.2f} < threshold {self.threshold:.2f}",
                     ) as ev:
-                        skill_result = await self.skill_agent.answer(
-                            customer_message, trace=trace
-                        )
-                        used = bool(
-                            skill_result.answer_text
-                            and skill_result.confidence > adjusted_confidence
-                        )
                         ev.output_summary = (
                             f"confidence={skill_result.confidence:.2f}, used={used}"
                         )
@@ -138,40 +171,26 @@ class ResponseAgent(BaseAgent):
                             "skill_sources": skill_result.sources,
                             "used_skill_response": used,
                         }
-                        if used:
-                            result = GeneratedResponse(
-                                text=skill_result.answer_text,
-                                confidence=skill_result.confidence,
-                                reasoning=f"[Skill Agent] {skill_result.reasoning}",
-                                is_followup=result.is_followup,
-                                followup_context=result.followup_context,
-                                answerable_from_context=True,
-                                requires_human_intervention=False,
-                            )
-                            adjusted_confidence = skill_result.confidence
-                else:
-                    skill_result = await self.skill_agent.answer(customer_message)
-                    if (
-                        skill_result.answer_text
-                        and skill_result.confidence > adjusted_confidence
-                    ):
-                        result = GeneratedResponse(
-                            text=skill_result.answer_text,
-                            confidence=skill_result.confidence,
-                            reasoning=f"[Skill Agent] {skill_result.reasoning}",
-                            is_followup=result.is_followup,
-                            followup_context=result.followup_context,
-                            answerable_from_context=True,
-                            requires_human_intervention=False,
-                        )
-                        adjusted_confidence = skill_result.confidence
-                        self.logger.info(
-                            "Skill agent answered with confidence=%.2f, sources=%s",
-                            skill_result.confidence,
-                            skill_result.sources,
-                        )
+
+                if used:
+                    result = GeneratedResponse(
+                        text=skill_result.answer_text,
+                        confidence=skill_result.confidence,
+                        reasoning=f"[Skill Agent] {skill_result.reasoning}",
+                        is_followup=result.is_followup,
+                        followup_context=result.followup_context,
+                        answerable_from_context=True,
+                        requires_human_intervention=False,
+                    )
+                    adjusted_confidence = skill_result.confidence
+                    self.logger.info(
+                        "Skill agent answered with confidence=%.2f, sources=%s",
+                        skill_result.confidence,
+                        skill_result.sources,
+                    )
             except Exception:
                 self.logger.exception("Skill agent query failed")
+
         elif trace and self.skill_agent is not None:
             if skip_fallback:
                 skip_reason = "skipped (user requested human intervention)"
@@ -187,15 +206,7 @@ class ResponseAgent(BaseAgent):
                 ev.status = "skipped"
                 ev.output_summary = skip_reason
 
-        return GeneratedResponse(
-            text=result.text,
-            confidence=adjusted_confidence,
-            reasoning=result.reasoning,
-            requires_human_intervention=result.requires_human_intervention,
-            is_followup=result.is_followup,
-            followup_context=result.followup_context,
-            answerable_from_context=result.answerable_from_context,
-        )
+        return result, adjusted_confidence
 
     async def _call_openai(
         self,
@@ -210,23 +221,35 @@ class ResponseAgent(BaseAgent):
             customer_message, conversation_history, relevant_memories, contact_info
         )
 
+        response = await self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+        )
+
+        raw = response.choices[0].message.content
+        self.logger.debug("[Primary Generation] LLM response: %s", raw)
+        parsed = json.loads(raw)
+
+        result = GeneratedResponse(
+            text=parsed["response_text"],
+            confidence=float(parsed["confidence"]),
+            reasoning=parsed.get("reasoning", ""),
+            requires_human_intervention=parsed.get("requires_human_intervention", False),
+            is_followup=parsed.get("is_followup", False),
+            followup_context=parsed.get("followup_context", ""),
+            answerable_from_context=parsed.get("answerable_from_context", True),
+        )
+
         if trace:
             with trace.step(
                 f"OpenAI LLM call ({self.model})",
                 "llm_call",
                 input_summary=f"model={self.model}, prompt_len={len(user_prompt)} chars",
             ) as ev:
-                response = await self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    response_format={"type": "json_object"},
-                )
-                raw = response.choices[0].message.content
-                self.logger.debug("[Primary Generation] LLM response: %s", raw)
-                parsed = json.loads(raw)
                 ev.output_summary = f"confidence={parsed['confidence']}"
                 ev.details = {
                     "model": self.model,
@@ -244,34 +267,5 @@ class ResponseAgent(BaseAgent):
                         "completion_tokens": response.usage.completion_tokens if response.usage else None,
                     },
                 }
-                return GeneratedResponse(
-                    text=parsed["response_text"],
-                    confidence=float(parsed["confidence"]),
-                    reasoning=parsed.get("reasoning", ""),
-                    requires_human_intervention=parsed.get("requires_human_intervention", False),
-                    is_followup=parsed.get("is_followup", False),
-                    followup_context=parsed.get("followup_context", ""),
-                    answerable_from_context=parsed.get("answerable_from_context", True),
-                )
 
-        response = await self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            response_format={"type": "json_object"},
-        )
-
-        raw = response.choices[0].message.content
-        self.logger.debug("[Primary Generation] LLM response: %s", raw)
-        parsed = json.loads(raw)
-        return GeneratedResponse(
-            text=parsed["response_text"],
-            confidence=float(parsed["confidence"]),
-            reasoning=parsed.get("reasoning", ""),
-            requires_human_intervention=parsed.get("requires_human_intervention", False),
-            is_followup=parsed.get("is_followup", False),
-            followup_context=parsed.get("followup_context", ""),
-            answerable_from_context=parsed.get("answerable_from_context", True),
-        )
+        return result
