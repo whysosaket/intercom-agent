@@ -1,7 +1,7 @@
 import logging
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 
 from app.config import settings
 from app.utils.hmac_verify import verify_intercom_signature
@@ -9,11 +9,13 @@ from app.models.schemas import ContactInfo
 
 if TYPE_CHECKING:
     from app.agents.orchestrator_agent import OrchestratorAgent
+    from app.services.message_coordinator import MessageCoordinator
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 orchestrator: "OrchestratorAgent | None" = None
+message_coordinator: "MessageCoordinator | None" = None
 
 
 def _extract_latest_message(payload: dict) -> str:
@@ -53,7 +55,7 @@ def _extract_contact_info(payload: dict) -> ContactInfo:
 
 
 @router.post("/webhooks/intercom")
-async def intercom_webhook(request: Request, background_tasks: BackgroundTasks):
+async def intercom_webhook(request: Request):
     """Receive Intercom webhook events and dispatch to orchestrator."""
     raw_body = await request.body()
     signature = request.headers.get("X-Hub-Signature", "")
@@ -78,9 +80,8 @@ async def intercom_webhook(request: Request, background_tasks: BackgroundTasks):
             message_body[:100],
         )
 
-        if orchestrator and message_body:
-            background_tasks.add_task(
-                orchestrator.handle_incoming_message,
+        if message_coordinator and message_body:
+            await message_coordinator.enqueue(
                 conversation_id=conversation_id,
                 message_body=message_body,
                 contact_info=contact_info,
