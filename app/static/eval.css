@@ -10,6 +10,35 @@
     box-shadow: var(--shadow-xs);
 }
 
+.fetch-limit-select {
+    padding: 7px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    background: var(--bg-elevated);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    font-family: var(--font-sans);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: border-color var(--transition-fast);
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238a8175'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 28px;
+}
+
+.fetch-limit-select:hover {
+    border-color: var(--border-strong);
+}
+
+.fetch-limit-select:focus {
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 2px var(--bg-app), 0 0 0 4px var(--accent-400);
+}
+
 /* ─── Report bar ─── */
 
 .eval-report {
@@ -208,6 +237,10 @@
     opacity: 0.5;
 }
 
+.conv-item.answered:not(.selected) {
+    opacity: 0.65;
+}
+
 .conv-item.generating {
     background: var(--bg-hover);
 }
@@ -290,6 +323,21 @@
     padding: 3px 10px;
     border-radius: var(--radius-full);
     font-family: var(--font-mono);
+}
+
+.conv-item-answered-badge {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--bg-muted);
+    padding: 3px 10px;
+    border-radius: var(--radius-full);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border: 1px solid var(--gray-200);
 }
 
 @keyframes pulse-opacity {

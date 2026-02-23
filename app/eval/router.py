@@ -50,6 +50,10 @@ class GenerateAllRequest(BaseModel):
     num_candidates: int = 1
 
 
+class FetchRequest(BaseModel):
+    limit: int = 20
+
+
 # ── Routes ──
 
 
@@ -71,8 +75,8 @@ def _get_intercom_orchestrator(request: Request):
 
 
 @router.post("/conversations")
-async def fetch_conversations(request: Request):
-    """Fetch recent Intercom conversations where no human admin has replied."""
+async def fetch_conversations(request: Request, body: FetchRequest = FetchRequest()):
+    """Fetch recent Intercom conversations (both answered and unanswered)."""
     orchestrator = _get_intercom_orchestrator(request)
 
     if orchestrator is None or orchestrator._http_client is None:
@@ -84,9 +88,8 @@ async def fetch_conversations(request: Request):
     try:
         conversations: list[dict[str, Any]] = []
         cursor: str | None = None
-        # Fetch up to 3 pages (60 conversations) to find enough unanswered ones
-        max_pages = 3
-        target = 20
+        target = max(1, min(body.limit, 200))
+        max_pages = max(3, (target // 20) + 1)
 
         for _ in range(max_pages):
             if len(conversations) >= target:
@@ -113,10 +116,7 @@ async def fetch_conversations(request: Request):
                     if not messages:
                         continue
 
-                    # Only keep conversations with NO admin reply
-                    has_admin = any(m["role"] == "admin" for m in messages)
-                    if has_admin:
-                        continue
+                    has_admin_reply = any(m["role"] == "admin" for m in messages)
 
                     # Extract contact info from source
                     source = full_conv.get("source", {})
@@ -131,6 +131,7 @@ async def fetch_conversations(request: Request):
                         "conversation_id": conv_id,
                         "contact": contact,
                         "messages": messages,
+                        "has_admin_reply": has_admin_reply,
                         "created_at": full_conv.get("created_at", ""),
                         "updated_at": full_conv.get("updated_at", ""),
                     })
@@ -147,7 +148,7 @@ async def fetch_conversations(request: Request):
             cursor = next_page["starting_after"]
 
         logger.info(
-            "Eval: found %d unanswered conversations", len(conversations)
+            "Eval: found %d conversations", len(conversations)
         )
         return {"conversations": conversations}
 

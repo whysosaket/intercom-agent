@@ -13,6 +13,8 @@ let editingText = "";
 // DOM elements
 const fetchBtn = document.getElementById("fetch-btn");
 const generateAllBtn = document.getElementById("generate-all-btn");
+const generateNonAnsweredBtn = document.getElementById("generate-nonanswered-btn");
+const fetchLimitSelect = document.getElementById("fetch-limit");
 const statusInfo = document.getElementById("status-info");
 const convList = document.getElementById("conv-list");
 const convCount = document.getElementById("conv-count");
@@ -32,13 +34,17 @@ fetchBtn.addEventListener("click", fetchConversations);
 async function fetchConversations() {
     fetchBtn.disabled = true;
     generateAllBtn.disabled = true;
+    generateNonAnsweredBtn.disabled = true;
     statusInfo.textContent = "Fetching...";
-    convList.innerHTML = '<div class="loading-state"><div class="spinner"></div><p>Fetching unanswered conversations from Intercom...</p></div>';
+    convList.innerHTML = '<div class="loading-state"><div class="spinner"></div><p>Fetching conversations from Intercom...</p></div>';
+
+    const limit = parseInt(fetchLimitSelect?.value || "20", 10);
 
     try {
         const res = await fetch("/eval/conversations", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ limit }),
         });
 
         if (!res.ok) {
@@ -51,11 +57,14 @@ async function fetchConversations() {
         if (data.message && conversations.length === 0) {
             statusInfo.textContent = data.message;
         } else {
-            statusInfo.textContent = `${conversations.length} conversations`;
+            const answeredCount = conversations.filter(c => c.has_admin_reply).length;
+            const unansweredCount = conversations.length - answeredCount;
+            statusInfo.textContent = `${conversations.length} conversations (${unansweredCount} unanswered, ${answeredCount} answered)`;
         }
 
         convCount.textContent = conversations.length > 0 ? `${conversations.length}` : "";
         generateAllBtn.disabled = conversations.length === 0;
+        generateNonAnsweredBtn.disabled = conversations.length === 0;
         renderConversationList();
 
     } catch (err) {
@@ -70,7 +79,7 @@ async function fetchConversations() {
 
 function renderConversationList() {
     if (conversations.length === 0) {
-        convList.innerHTML = '<div class="empty-state"><p>No unanswered conversations found.</p><p class="hint">All recent conversations have admin replies, or Intercom API is unavailable.</p></div>';
+        convList.innerHTML = '<div class="empty-state"><p>No conversations found.</p><p class="hint">No recent conversations available, or Intercom API is unavailable.</p></div>';
         return;
     }
 
@@ -91,6 +100,9 @@ function renderConversationList() {
         if (candidatesMap.has(conv.conversation_id)) {
             item.classList.add("generated");
         }
+        if (conv.has_admin_reply) {
+            item.classList.add("answered");
+        }
         item.dataset.convId = conv.conversation_id;
 
         const name = conv.contact?.name || conv.contact?.email || "Unknown";
@@ -107,6 +119,8 @@ function renderConversationList() {
             const cands = candidatesMap.get(conv.conversation_id);
             const topConf = cands.length > 0 ? Math.max(...cands.map(c => c.confidence || 0)) : 0;
             badgeHtml = `<span class="conv-item-ready-badge">${(topConf * 100).toFixed(0)}%</span>`;
+        } else if (conv.has_admin_reply) {
+            badgeHtml = '<span class="conv-item-answered-badge">Answered</span>';
         }
 
         item.innerHTML = `
@@ -187,6 +201,11 @@ generateBtn.addEventListener("click", generateResponses);
 async function generateResponses() {
     if (!selectedConv || !selectedConvId) return;
 
+    if (selectedConv.has_admin_reply) {
+        candidatesContent.innerHTML = '<div class="empty-state"><p>This conversation already has an admin reply.</p><p class="hint">Generation is skipped for already-answered conversations.</p></div>';
+        return;
+    }
+
     generateBtn.disabled = true;
     generateBtn.textContent = "Generating...";
 
@@ -231,23 +250,14 @@ async function generateResponses() {
     }
 }
 
-// ─── Generate All ───
+// ─── Generate All / Generate Non-Answered ───
 
 generateAllBtn.addEventListener("click", generateAll);
+generateNonAnsweredBtn.addEventListener("click", generateNonAnswered);
 
-async function generateAll() {
-    // Only generate for conversations that don't already have candidates and aren't sent
-    const toGenerate = conversations.filter(c =>
-        !candidatesMap.has(c.conversation_id) &&
-        !sentConversations.has(c.conversation_id)
-    );
-
-    if (toGenerate.length === 0) {
-        statusInfo.textContent = "All conversations already have generated responses.";
-        return;
-    }
-
+async function _generateForConversations(toGenerate) {
     generateAllBtn.disabled = true;
+    generateNonAnsweredBtn.disabled = true;
     fetchBtn.disabled = true;
     generateBtn.disabled = true;
 
@@ -330,13 +340,14 @@ async function generateAll() {
         renderReport();
 
     } catch (err) {
-        statusInfo.textContent = `Generate all failed: ${err.message}`;
+        statusInfo.textContent = `Generation failed: ${err.message}`;
         // Clear generating state
         for (const conv of toGenerate) {
             generatingSet.delete(conv.conversation_id);
         }
     } finally {
         generateAllBtn.disabled = false;
+        generateNonAnsweredBtn.disabled = false;
         fetchBtn.disabled = false;
         if (selectedConvId) generateBtn.disabled = false;
 
@@ -347,6 +358,38 @@ async function generateAll() {
             renderCandidates(selectedConvId);
         }
     }
+}
+
+async function generateAll() {
+    // Generate for all conversations that don't already have candidates, aren't sent, and aren't answered
+    const toGenerate = conversations.filter(c =>
+        !candidatesMap.has(c.conversation_id) &&
+        !sentConversations.has(c.conversation_id) &&
+        !c.has_admin_reply
+    );
+
+    if (toGenerate.length === 0) {
+        statusInfo.textContent = "No eligible conversations to generate for.";
+        return;
+    }
+
+    await _generateForConversations(toGenerate);
+}
+
+async function generateNonAnswered() {
+    // Generate only for conversations without an admin reply
+    const toGenerate = conversations.filter(c =>
+        !candidatesMap.has(c.conversation_id) &&
+        !sentConversations.has(c.conversation_id) &&
+        !c.has_admin_reply
+    );
+
+    if (toGenerate.length === 0) {
+        statusInfo.textContent = "No non-answered conversations to generate for.";
+        return;
+    }
+
+    await _generateForConversations(toGenerate);
 }
 
 // ─── Report ───

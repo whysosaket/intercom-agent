@@ -21,8 +21,15 @@
             </div>
             <div class="header-right">
                 <a href="/chat" class="btn btn-nav"><span aria-hidden="true">&larr;</span> Chat</a>
+                <select id="fetch-limit" class="fetch-limit-select" aria-label="Number of conversations to fetch">
+                    <option value="10">10</option>
+                    <option value="20" selected>20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
                 <button id="fetch-btn" class="btn btn-primary" type="button">Fetch Conversations</button>
                 <button id="generate-all-btn" class="btn btn-accent" type="button" disabled>Generate All</button>
+                <button id="generate-nonanswered-btn" class="btn btn-accent" type="button" disabled>Generate Non-Answered</button>
             </div>
         </header>
 
