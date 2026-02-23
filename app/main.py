@@ -147,7 +147,20 @@ async def lifespan(app: FastAPI):
         sync_orchestrator = None
         logger.warning("No INTERCOM_ACCESS_TOKEN — sync disabled")
 
+    # Message coordinator: buffers rapid consecutive messages per conversation
+    from app.services.message_coordinator import MessageCoordinator
+
+    coordinator = MessageCoordinator(
+        orchestrator=orchestrator,
+        timeout=settings.MESSAGE_BUFFER_TIMEOUT_SECONDS,
+    )
+    logger.info(
+        "Message coordinator initialized (buffer_timeout=%.1fs)",
+        settings.MESSAGE_BUFFER_TIMEOUT_SECONDS,
+    )
+
     intercom_webhook.orchestrator = orchestrator
+    intercom_webhook.message_coordinator = coordinator
     if _slack_available:
         set_slack_orchestrator(orchestrator)
 

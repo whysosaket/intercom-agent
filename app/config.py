@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     POST_PROCESSOR_ENABLED: bool = True
     POST_PROCESSOR_MODEL: str = "gpt-5-mini"
 
+    # Message buffering (multi-turn rapid messages)
+    MESSAGE_BUFFER_TIMEOUT_SECONDS: float = 3.0
+
     # Mock / Development
     MOCK_MODE: bool = False
     CHAT_UI_ENABLED: bool = True
