@@ -15,6 +15,7 @@ class RoutingDecision(str, Enum):
 
     ESCALATE = "escalate"  # Skip answer generation, go straight to human
     GREETING = "greeting"  # Auto-reply with a greeting, no LLM needed
+    CLARIFY_ISSUE = "clarify_issue"  # Ask user for more details about their issue
     KB_ONLY = "kb_only"  # Answer from FAQ/memory only, no doc agent
     FULL_PIPELINE = "full_pipeline"  # Full answer generation + doc agent fallback
 
@@ -31,6 +32,7 @@ class PreCheckResult(BaseModel):
     reasoning: str = ""
     confidence_hint: float = 0.0
     greeting_response: str = ""  # Auto-reply text for greeting messages
+    clarify_response: str = ""  # Auto-reply text asking for issue details
 
 
 class GeneratedResponse(BaseModel):

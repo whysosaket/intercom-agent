@@ -2,6 +2,7 @@
 candidate responses, review/edit/approve, and send back via Intercom."""
 
 import asyncio
+import json as json_mod
 import logging
 from typing import Any
 
@@ -10,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from starlette.responses import StreamingResponse
 
 from app.chat.trace import TraceCollector
 from app.models.schemas import RoutingDecision
@@ -232,6 +234,34 @@ async def _generate_for_conversation(
                     })
                     continue
 
+                # If pre-check detects a vague issue, ask for details
+                if precheck.routing_decision == RoutingDecision.CLARIFY_ISSUE:
+                    clarify_text = (
+                        precheck.clarify_response
+                        or "Could you share more details about the issue? "
+                           "The exact error message and what you were doing when it occurred would help."
+                    )
+                    with trace.step(
+                        "Routing Decision", "computation",
+                        input_summary="precheck_route=CLARIFY_ISSUE",
+                    ) as ev:
+                        ev.output_summary = "Asking for issue details"
+                        ev.details = {
+                            "decision": "clarify_issue",
+                            "clarify_text": clarify_text,
+                            "reason": precheck.reasoning,
+                        }
+
+                    candidates.append({
+                        "index": i,
+                        "text": clarify_text,
+                        "confidence": 1.0,
+                        "reasoning": "[Clarify Issue] Asking for details",
+                        "pipeline_trace": safe_serialize_trace(trace),
+                        "total_duration_ms": trace.total_duration_ms,
+                    })
+                    continue
+
             use_doc_fallback = (
                 precheck is None
                 or precheck.routing_decision == RoutingDecision.FULL_PIPELINE
@@ -344,6 +374,66 @@ async def generate_all(request: Request, body: GenerateAllRequest):
             output.append(result)
 
     return {"results": output}
+
+
+@router.post("/generate-all-stream")
+async def generate_all_stream(request: Request, body: GenerateAllRequest):
+    """Stream candidate responses as SSE events — each result sent as soon as ready."""
+    orchestrator = request.app.state.orchestrator
+    num = body.num_candidates
+
+    async def _event_generator():
+        queue: asyncio.Queue[dict | None] = asyncio.Queue()
+        total = len(body.conversations)
+
+        async def _run_one(item: GenerateAllItem) -> None:
+            try:
+                result = await _generate_for_conversation(
+                    orchestrator, item.conversation_id, item.customer_message, num
+                )
+            except Exception as exc:
+                logger.exception(
+                    "generate-all-stream failed for %s: %s",
+                    item.conversation_id, exc,
+                )
+                result = {
+                    "conversation_id": item.conversation_id,
+                    "candidates": [{
+                        "index": 0,
+                        "text": "",
+                        "confidence": 0.0,
+                        "reasoning": f"Generation failed: {exc}",
+                        "pipeline_trace": [],
+                        "total_duration_ms": 0,
+                        "error": True,
+                    }],
+                }
+            await queue.put(result)
+
+        # Launch all tasks concurrently
+        tasks = [asyncio.create_task(_run_one(item)) for item in body.conversations]
+
+        # Yield results as they arrive
+        for i in range(total):
+            result = await queue.get()
+            payload = json_mod.dumps(result)
+            yield f"data: {payload}\n\n"
+
+        # Final event to signal completion
+        yield "data: [DONE]\n\n"
+
+        # Ensure all tasks are cleaned up
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    return StreamingResponse(
+        _event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/send")

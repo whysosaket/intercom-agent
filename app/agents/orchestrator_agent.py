@@ -223,6 +223,22 @@ class OrchestratorAgent(BaseAgent):
                     )
                     return
 
+                # Path C: Vague issue — ask for details without LLM answer generation
+                if precheck.routing_decision == RoutingDecision.CLARIFY_ISSUE:
+                    clarify_text = (
+                        precheck.clarify_response
+                        or "Could you share more details about the issue? "
+                           "The exact error message and what you were doing when it occurred would help."
+                    )
+                    self.logger.info(
+                        "Conversation %s: asking for issue details",
+                        conversation_id,
+                    )
+                    await self._auto_respond(
+                        conversation_id, mem_user_id, message_body, clarify_text
+                    )
+                    return
+
             # Step 3: Generate response via Response Agent
             # use_doc_fallback is True only for FULL_PIPELINE routing
             use_doc_fallback = (

@@ -221,6 +221,59 @@ async def _handle_user_message(websocket, session, orchestrator, user_text):
             )
             return
 
+        # Path C: Vague issue — ask for details without LLM answer generation
+        if precheck.routing_decision == RoutingDecision.CLARIFY_ISSUE:
+            clarify_text = (
+                precheck.clarify_response
+                or "Could you share more details about the issue? "
+                   "The exact error message and what you were doing when it occurred would help."
+            )
+
+            with trace.step(
+                "Routing Decision",
+                "computation",
+                input_summary="precheck_route=CLARIFY_ISSUE",
+            ) as ev:
+                ev.output_summary = "Asking for issue details"
+                ev.details = {
+                    "decision": "clarify_issue",
+                    "clarify_text": clarify_text,
+                    "reason": precheck.reasoning,
+                }
+
+            pipeline_trace = safe_serialize_trace(trace)
+            total_duration_ms = trace.total_duration_ms
+            logger.info(
+                "Pipeline trace: %d events, %dms total. Labels: %s",
+                len(pipeline_trace),
+                total_duration_ms,
+                [ev.get("label", "?") for ev in pipeline_trace],
+            )
+
+            ai_msg = ChatMessage(
+                role="assistant",
+                content=clarify_text,
+                confidence=1.0,
+                reasoning="[Clarify Issue] Asking for details",
+                status="sent",
+            )
+            session.messages.append(ai_msg)
+            await orchestrator.memory_agent.store_exchange(
+                session.user_id, user_text, clarify_text
+            )
+            await websocket.send_json(
+                {
+                    "type": "ai_response",
+                    "content": clarify_text,
+                    "confidence": 1.0,
+                    "reasoning": "[Clarify Issue] Asking for details",
+                    "auto_sent": True,
+                    "pipeline_trace": pipeline_trace,
+                    "total_duration_ms": total_duration_ms,
+                }
+            )
+            return
+
     # Step 3: Generate response via Response Agent
     use_doc_fallback = (
         precheck is None

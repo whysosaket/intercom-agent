@@ -271,7 +271,7 @@ async function generateAll() {
     }).filter(item => item.customer_message);
 
     try {
-        const res = await fetch("/eval/generate-all", {
+        const res = await fetch("/eval/generate-all-stream", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -284,13 +284,44 @@ async function generateAll() {
             throw new Error(`HTTP ${res.status}`);
         }
 
-        const data = await res.json();
-        const results = data.results || [];
+        // Read SSE stream — each result arrives as soon as it's ready
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
 
-        for (const result of results) {
-            generatingSet.delete(result.conversation_id);
-            candidatesMap.set(result.conversation_id, result.candidates || []);
-            completed++;
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+
+            // Process complete SSE lines from the buffer
+            const lines = buffer.split("\n");
+            // Keep the last (possibly incomplete) line in the buffer
+            buffer = lines.pop();
+
+            for (const line of lines) {
+                if (!line.startsWith("data: ")) continue;
+                const payload = line.slice(6);
+                if (payload === "[DONE]") continue;
+
+                try {
+                    const result = JSON.parse(payload);
+                    generatingSet.delete(result.conversation_id);
+                    candidatesMap.set(result.conversation_id, result.candidates || []);
+                    completed++;
+
+                    statusInfo.textContent = `Generated ${completed}/${total}...`;
+                    renderConversationList();
+
+                    // If this conversation is currently selected, refresh its candidates panel
+                    if (selectedConvId === result.conversation_id) {
+                        renderCandidates(result.conversation_id);
+                    }
+                } catch (parseErr) {
+                    // Skip unparseable lines
+                }
+            }
         }
 
         statusInfo.textContent = `Generated ${completed}/${total} responses`;
