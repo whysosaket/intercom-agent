@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="var(--bg-app)">
     <title>Intercom Responder — Eval</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -10,9 +11,9 @@
     <link rel="stylesheet" href="/static/chat.css">
     <link rel="stylesheet" href="/static/eval.css">
 </head>
-<body>
-    <div id="app">
-        <header class="app-header">
+<body class="eval-page">
+    <div id="app" class="eval-app">
+        <header class="app-header eval-header">
             <div class="header-left">
                 <h1 class="app-title">Eval</h1>
                 <span id="status-info" class="session-badge" aria-live="polite"></span>
@@ -25,8 +26,7 @@
         </header>
 
         <div class="eval-layout">
-            <!-- Left: Conversation list -->
-            <aside id="conv-list-panel" class="eval-panel conv-list-panel">
+            <aside id="conv-list-panel" class="eval-panel conv-list-panel" aria-label="Conversation list">
                 <div class="panel-header">
                     <h2 class="panel-title">Conversations</h2>
                     <span id="conv-count" class="panel-meta"></span>
@@ -39,8 +39,7 @@
                 </div>
             </aside>
 
-            <!-- Center: Message history + generate button -->
-            <main id="message-panel" class="eval-panel message-panel">
+            <main id="message-panel" class="eval-panel message-panel" aria-label="Message thread">
                 <div class="panel-header">
                     <h2 class="panel-title" id="message-panel-title">Messages</h2>
                     <div class="panel-actions">
@@ -54,8 +53,7 @@
                 </div>
             </main>
 
-            <!-- Right: Candidate responses -->
-            <aside id="candidates-panel" class="eval-panel candidates-panel">
+            <aside id="candidates-panel" class="eval-panel candidates-panel" aria-label="Candidate responses">
                 <div class="panel-header">
                     <h2 class="panel-title">Candidate Responses</h2>
                 </div>
@@ -68,12 +66,11 @@
         </div>
     </div>
 
-    <!-- Edit modal (reuse chat pattern) -->
-    <div id="edit-modal" class="modal hidden" role="dialog" aria-modal="true">
-        <div class="modal-backdrop"></div>
-        <div class="modal-content">
-            <h3 class="modal-title">Edit Response</h3>
-            <textarea id="edit-textarea" class="edit-textarea" rows="8"></textarea>
+    <div id="edit-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="edit-modal-title">
+        <div class="modal-backdrop" aria-hidden="true"></div>
+        <div class="modal-content eval-modal-content">
+            <h3 id="edit-modal-title" class="modal-title">Edit Response</h3>
+            <textarea id="edit-textarea" class="edit-textarea" rows="8" aria-label="Edited response text"></textarea>
             <div class="modal-actions">
                 <button id="edit-cancel" class="btn btn-ghost" type="button">Cancel</button>
                 <button id="edit-save" class="btn btn-primary" type="button">Save & Send</button>
