@@ -221,6 +221,7 @@ async function generateResponses() {
         candidatesMap.set(selectedConvId, data.candidates || []);
         renderCandidates(selectedConvId);
         renderConversationList();
+        renderReport();
 
     } catch (err) {
         candidatesContent.innerHTML = `<div class="empty-state"><p>Failed to generate responses.</p><p class="hint">${escapeHtml(err.message)}</p></div>`;
@@ -313,6 +314,7 @@ async function generateAll() {
 
                     statusInfo.textContent = `Generated ${completed}/${total}...`;
                     renderConversationList();
+                    renderReport();
 
                     // If this conversation is currently selected, refresh its candidates panel
                     if (selectedConvId === result.conversation_id) {
@@ -325,6 +327,7 @@ async function generateAll() {
         }
 
         statusInfo.textContent = `Generated ${completed}/${total} responses`;
+        renderReport();
 
     } catch (err) {
         statusInfo.textContent = `Generate all failed: ${err.message}`;
@@ -344,6 +347,101 @@ async function generateAll() {
             renderCandidates(selectedConvId);
         }
     }
+}
+
+// ─── Report ───
+
+const AUTOSEND_THRESHOLD = 0.8;
+const evalReport = document.getElementById("eval-report");
+
+function renderReport() {
+    if (candidatesMap.size === 0) {
+        evalReport.classList.add("hidden");
+        return;
+    }
+
+    let autoSend = 0;
+    let needsReview = 0;
+    let escalated = 0;
+    let greeting = 0;
+    let clarify = 0;
+    let errors = 0;
+    let totalConf = 0;
+    let confCount = 0;
+
+    for (const [convId, candidates] of candidatesMap) {
+        if (!candidates || candidates.length === 0) continue;
+        const best = candidates[0];
+
+        if (best.error) {
+            errors++;
+            continue;
+        }
+
+        const reasoning = best.reasoning || "";
+        if (reasoning.startsWith("[Pre-Check Escalation]")) {
+            escalated++;
+        } else if (reasoning.startsWith("[Greeting]")) {
+            greeting++;
+            autoSend++;
+        } else if (reasoning.startsWith("[Clarify Issue]")) {
+            clarify++;
+            autoSend++;
+        } else if ((best.confidence || 0) >= AUTOSEND_THRESHOLD) {
+            autoSend++;
+        } else {
+            needsReview++;
+        }
+
+        totalConf += best.confidence || 0;
+        confCount++;
+    }
+
+    const total = candidatesMap.size;
+    const pending = generatingSet.size;
+    const avgConf = confCount > 0 ? (totalConf / confCount * 100).toFixed(0) : "—";
+
+    evalReport.classList.remove("hidden");
+    evalReport.innerHTML = `
+        <div class="report-stats">
+            <div class="report-stat report-stat-total">
+                <span class="report-stat-value">${total}</span>
+                <span class="report-stat-label">Generated</span>
+            </div>
+            <div class="report-stat report-stat-auto">
+                <span class="report-stat-value">${autoSend}</span>
+                <span class="report-stat-label">Auto-send</span>
+            </div>
+            <div class="report-stat report-stat-review">
+                <span class="report-stat-value">${needsReview}</span>
+                <span class="report-stat-label">Needs review</span>
+            </div>
+            <div class="report-stat report-stat-escalated">
+                <span class="report-stat-value">${escalated}</span>
+                <span class="report-stat-label">Escalated</span>
+            </div>
+            ${greeting > 0 ? `<div class="report-stat report-stat-greeting">
+                <span class="report-stat-value">${greeting}</span>
+                <span class="report-stat-label">Greeting</span>
+            </div>` : ""}
+            ${clarify > 0 ? `<div class="report-stat report-stat-clarify">
+                <span class="report-stat-value">${clarify}</span>
+                <span class="report-stat-label">Clarify</span>
+            </div>` : ""}
+            ${errors > 0 ? `<div class="report-stat report-stat-error">
+                <span class="report-stat-value">${errors}</span>
+                <span class="report-stat-label">Errors</span>
+            </div>` : ""}
+            <div class="report-stat report-stat-avg">
+                <span class="report-stat-value">${avgConf}${avgConf !== "—" ? "%" : ""}</span>
+                <span class="report-stat-label">Avg confidence</span>
+            </div>
+            ${pending > 0 ? `<div class="report-stat report-stat-pending">
+                <span class="report-stat-value">${pending}</span>
+                <span class="report-stat-label">Pending</span>
+            </div>` : ""}
+        </div>
+    `;
 }
 
 // ─── Render Candidates ───

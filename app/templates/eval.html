@@ -8,8 +8,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/chat.css?v=2">
-    <link rel="stylesheet" href="/static/eval.css?v=2">
+    <link rel="stylesheet" href="/static/chat.css?v=3">
+    <link rel="stylesheet" href="/static/eval.css?v=3">
 </head>
 <body class="eval-page">
     <div id="app" class="eval-app">
@@ -24,6 +24,8 @@
                 <button id="generate-all-btn" class="btn btn-accent" type="button" disabled>Generate All</button>
             </div>
         </header>
+
+        <div id="eval-report" class="eval-report hidden" aria-label="Generation report"></div>
 
         <div class="eval-layout">
             <aside id="conv-list-panel" class="eval-panel conv-list-panel" aria-label="Conversation list">
@@ -78,7 +80,7 @@
         </div>
     </div>
 
-    <script src="/static/trace-renderer.js?v=2"></script>
-    <script src="/static/eval.js?v=2"></script>
+    <script src="/static/trace-renderer.js?v=3"></script>
+    <script src="/static/eval.js?v=3"></script>
 </body>
 </html>

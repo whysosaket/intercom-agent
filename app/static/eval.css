@@ -10,13 +10,84 @@
     box-shadow: var(--shadow-xs);
 }
 
+/* ─── Report bar ─── */
+
+.eval-report {
+    padding: 10px 24px;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+}
+
+.eval-report.hidden {
+    display: none;
+}
+
+.report-stats {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.report-stat {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+
+.report-stat-value {
+    font-size: var(--text-lg, 18px);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+}
+
+.report-stat-label {
+    font-size: var(--text-xs);
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.report-stat-auto .report-stat-value {
+    color: var(--success, #16a34a);
+}
+
+.report-stat-review .report-stat-value {
+    color: var(--warning, #d97706);
+}
+
+.report-stat-escalated .report-stat-value {
+    color: var(--error, #dc2626);
+}
+
+.report-stat-greeting .report-stat-value,
+.report-stat-clarify .report-stat-value {
+    color: var(--accent-500, #6366f1);
+}
+
+.report-stat-error .report-stat-value {
+    color: var(--error, #dc2626);
+}
+
+.report-stat-pending .report-stat-value {
+    color: var(--text-muted);
+}
+
+.report-stat-avg .report-stat-value {
+    color: var(--text-accent, #4f46e5);
+    font-family: var(--font-mono);
+}
+
 /* ─── Layout ─── */
 
 .eval-layout {
     display: grid;
     grid-template-columns: 320px 1fr 380px;
     gap: 1px;
-    height: calc(100vh - 56px);
+    flex: 1;
+    min-height: 0;
     background: var(--border);
     overflow: hidden;
 }

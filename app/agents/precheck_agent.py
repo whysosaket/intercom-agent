@@ -94,13 +94,17 @@ For follow-ups, check: does the conversation history contain the SPECIFIC inform
 ### Step 5: Assess answerability
 Can this question be answered from the FAQ list, product context, or conversation history provided?
 
-Set answerable_from_context=false and routing_decision="escalate" when:
-- Question asks for timelines, release dates, or ETAs
-- Question asks for account-specific data (usage, billing details, subscription status)
-- Question asks for internal decisions or roadmap details
-- Question is off-topic (not related to {cfg.name} at all)
-- Question is a follow-up but the specific answer is not in context
-- Question requires information not present in any provided source
+IMPORTANT — FAQ MATCH TAKES PRIORITY: If the customer's question matches or is closely related to ANY of the FAQ questions listed above, it is answerable. Do NOT escalate it. Route it to "kb_only" or "full_pipeline" so the answer agent can provide the FAQ answer. For example, questions about deleting accounts, deleting memories, pricing, exporting data, or user IDs all have FAQ entries and must NOT be escalated.
+
+Set answerable_from_context=false and routing_decision="escalate" ONLY when ALL of these are true:
+1. The question does NOT match or closely relate to any FAQ entry above
+2. AND one of these conditions applies:
+   - Question asks for timelines, release dates, or ETAs
+   - Question asks for account-specific data that is NOT covered by FAQ (e.g., specific usage numbers, billing amounts)
+   - Question asks for internal decisions or roadmap details
+   - Question is off-topic (not related to {cfg.name} at all)
+   - Question is a follow-up but the specific answer is not in context
+   - Question requires information not present in any provided source
 
 ### Step 6: Classify question type
 - TECHNICAL: Questions about API usage, code, integration, SDK, setup, configuration, implementation, MCP, debugging, errors, technical features. ALSO includes questions asking HOW to use product features (e.g., "how do I use graph memories?", "how do I add memories?", "how to set up OpenMemory?") — these need documentation.
