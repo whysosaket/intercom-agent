@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from app.chat.trace import TraceCollector
+from app.models.schemas import RoutingDecision
 from app.services.sync_service import extract_messages
 from app.utils.trace_utils import safe_serialize_trace
 
@@ -175,11 +176,50 @@ async def _generate_for_conversation(
                 user_id, customer_message, trace=trace
             )
 
+            # Pre-check classification (if enabled)
+            precheck = None
+            if orchestrator.precheck_agent:
+                precheck = await orchestrator.precheck_agent.classify(
+                    customer_message=customer_message,
+                    conversation_history=memory_context.conversation_history,
+                    global_matches=memory_context.global_matches,
+                    trace=trace,
+                )
+
+                # If pre-check escalates, record as a low-confidence candidate
+                if precheck.routing_decision == RoutingDecision.ESCALATE:
+                    with trace.step(
+                        "Routing Decision", "computation",
+                        input_summary="precheck_route=ESCALATE",
+                    ) as ev:
+                        ev.output_summary = "Escalated by pre-check"
+                        ev.details = {
+                            "decision": "escalated_by_precheck",
+                            "reason": precheck.reasoning,
+                        }
+
+                    candidates.append({
+                        "index": i,
+                        "text": "",
+                        "confidence": precheck.confidence_hint,
+                        "reasoning": f"[Pre-Check Escalation] {precheck.reasoning}",
+                        "pipeline_trace": safe_serialize_trace(trace),
+                        "total_duration_ms": trace.total_duration_ms,
+                    })
+                    continue
+
+            use_doc_fallback = (
+                precheck is None
+                or precheck.routing_decision == RoutingDecision.FULL_PIPELINE
+            )
+
             result = await orchestrator.response_agent.generate(
                 customer_message=customer_message,
                 memory_context=memory_context,
                 contact_info=None,
                 trace=trace,
+                precheck=precheck,
+                use_doc_fallback=use_doc_fallback,
             )
             pre_postprocess_confidence = result.confidence
 
@@ -192,6 +232,7 @@ async def _generate_for_conversation(
 
             final_confidence = result.confidence
             auto_sent = final_confidence >= orchestrator.threshold
+            precheck_route = precheck.routing_decision.value if precheck else "no_precheck"
             with trace.step(
                 "Routing Decision",
                 "computation",
@@ -202,6 +243,7 @@ async def _generate_for_conversation(
                     "threshold": orchestrator.threshold,
                     "final_confidence": final_confidence,
                     "pre_postprocess_confidence": pre_postprocess_confidence,
+                    "precheck_route": precheck_route,
                     "decision": "auto_sent" if auto_sent else "pending_review",
                 }
 

@@ -27,6 +27,7 @@ async def lifespan(app: FastAPI):
         DocAgent,
         MemZeroAgent,
         MemoryAgent,
+        PreCheckAgent,
         ResponseAgent,
         PostProcessingAgent,
         SlackAgent,
@@ -91,6 +92,18 @@ async def lifespan(app: FastAPI):
         confidence_threshold=settings.CONFIDENCE_THRESHOLD,
     )
 
+    # Pre-check agent: fast classifier that routes before answer generation
+    precheck_agent = None
+    if settings.PRE_CHECK_ENABLED and settings.OPENAI_API_KEY:
+        precheck_agent = PreCheckAgent(
+            api_key=settings.OPENAI_API_KEY,
+            model=settings.PRE_CHECK_MODEL,
+            company_cfg=company_config,
+        )
+        logger.info("Pre-check agent enabled (model=%s)", settings.PRE_CHECK_MODEL)
+    else:
+        logger.info("Pre-check agent disabled")
+
     # Post-processing agent: pass api_key only when enabled
     postprocessing_agent = PostProcessingAgent(
         api_key=settings.OPENAI_API_KEY if settings.POST_PROCESSOR_ENABLED else None,
@@ -113,6 +126,7 @@ async def lifespan(app: FastAPI):
         response_agent=response_agent,
         postprocessing_agent=postprocessing_agent,
         slack_agent=slack_agent,
+        precheck_agent=precheck_agent,
         intercom_access_token=settings.INTERCOM_ACCESS_TOKEN if not settings.MOCK_MODE else "",
         intercom_admin_id=settings.INTERCOM_ADMIN_ID,
         mock_mode=settings.MOCK_MODE,
@@ -132,6 +146,7 @@ async def lifespan(app: FastAPI):
             response_agent=response_agent,
             postprocessing_agent=postprocessing_agent,
             slack_agent=slack_agent,
+            precheck_agent=precheck_agent,
             intercom_access_token=settings.INTERCOM_ACCESS_TOKEN,
             intercom_admin_id=settings.INTERCOM_ADMIN_ID,
             mock_mode=False,

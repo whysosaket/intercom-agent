@@ -7,9 +7,10 @@ import httpx
 from app.agents.base import BaseAgent
 from app.agents.memory_agent import MemoryAgent
 from app.agents.postprocessing_agent import PostProcessingAgent
+from app.agents.precheck_agent import PreCheckAgent
 from app.agents.response_agent import ResponseAgent
 from app.agents.slack_agent import SlackAgent
-from app.models.schemas import ContactInfo
+from app.models.schemas import ContactInfo, RoutingDecision
 
 INTERCOM_BASE_URL = "https://api.intercom.io"
 
@@ -28,6 +29,7 @@ class OrchestratorAgent(BaseAgent):
         response_agent: ResponseAgent,
         postprocessing_agent: PostProcessingAgent,
         slack_agent: SlackAgent,
+        precheck_agent: PreCheckAgent | None = None,
         intercom_access_token: str = "",
         intercom_admin_id: str = "",
         mock_mode: bool = False,
@@ -38,6 +40,7 @@ class OrchestratorAgent(BaseAgent):
         self.response_agent = response_agent
         self.postprocessing_agent = postprocessing_agent
         self.slack_agent = slack_agent
+        self.precheck_agent = precheck_agent
         self.threshold = confidence_threshold
 
         # Intercom client (owned directly)
@@ -61,17 +64,23 @@ class OrchestratorAgent(BaseAgent):
     async def initialize(self) -> None:
         """Initialize all child agents."""
         await self.memory_agent.initialize()
+        if self.precheck_agent:
+            await self.precheck_agent.initialize()
         await self.response_agent.initialize()
         await self.postprocessing_agent.initialize()
         await self.slack_agent.initialize()
         mode = "mock" if self.mock_mode else "real"
+        precheck_status = "enabled" if self.precheck_agent else "disabled"
         self.logger.info(
-            "Orchestrator agent initialized with all sub-agents (intercom=%s)", mode
+            "Orchestrator agent initialized with all sub-agents (intercom=%s, precheck=%s)",
+            mode, precheck_status,
         )
 
     async def shutdown(self) -> None:
         """Shutdown all child agents and close HTTP client."""
         await self.memory_agent.shutdown()
+        if self.precheck_agent:
+            await self.precheck_agent.shutdown()
         await self.response_agent.shutdown()
         await self.postprocessing_agent.shutdown()
         await self.slack_agent.shutdown()
@@ -152,7 +161,12 @@ class OrchestratorAgent(BaseAgent):
     ) -> None:
         """Process an incoming Intercom message end-to-end.
 
-        Pipeline: Memory -> Response -> PostProcessing -> Route
+        Pipeline: Memory -> PreCheck -> (Route) -> Response -> PostProcessing -> Route
+
+        Three routing paths based on pre-check:
+        - ESCALATE: Immediate human escalation (no answer generation)
+        - KB_ONLY: Answer from FAQ/memory only (no doc agent fallback)
+        - FULL_PIPELINE: Full answer generation with doc agent fallback
         """
         mem_user_id = user_id or (
             contact_info.email
@@ -171,28 +185,63 @@ class OrchestratorAgent(BaseAgent):
                 mem_user_id, message_body
             )
 
-            # Step 2: Generate response via Response Agent
+            # Step 2: Pre-check classification (if enabled)
+            precheck = None
+            if self.precheck_agent:
+                precheck = await self.precheck_agent.classify(
+                    customer_message=message_body,
+                    conversation_history=memory_context.conversation_history,
+                    global_matches=memory_context.global_matches,
+                )
+
+                # Path A: Immediate escalation — no answer generation
+                if precheck.routing_decision == RoutingDecision.ESCALATE:
+                    self.logger.info(
+                        "Conversation %s: pre-check escalated (%s)",
+                        conversation_id,
+                        precheck.reasoning,
+                    )
+                    await self.slack_agent.send_review_request(
+                        conversation_id=conversation_id,
+                        customer_message=message_body,
+                        ai_response="",
+                        confidence=precheck.confidence_hint,
+                        reasoning=f"[Pre-Check Escalation] {precheck.reasoning}",
+                        user_id=mem_user_id,
+                    )
+                    return
+
+            # Step 3: Generate response via Response Agent
+            # use_doc_fallback is True only for FULL_PIPELINE routing
+            use_doc_fallback = (
+                precheck is None
+                or precheck.routing_decision == RoutingDecision.FULL_PIPELINE
+            )
+
             result = await self.response_agent.generate(
                 customer_message=message_body,
                 memory_context=memory_context,
                 contact_info=contact_info,
+                precheck=precheck,
+                use_doc_fallback=use_doc_fallback,
             )
 
             self.logger.info(
-                "Conversation %s: confidence=%.2f, threshold=%.2f",
+                "Conversation %s: confidence=%.2f, threshold=%.2f, route=%s",
                 conversation_id,
                 result.confidence,
                 self.threshold,
+                precheck.routing_decision.value if precheck else "no_precheck",
             )
 
-            # Step 3: Post-process via PostProcessing Agent
+            # Step 4: Post-process via PostProcessing Agent
             result = await self.postprocessing_agent.process(
                 customer_message=message_body,
                 generated_response=result,
                 conversation_history=memory_context.conversation_history,
             )
 
-            # Step 4: Route based on confidence
+            # Step 5: Route based on confidence
             if result.confidence >= self.threshold:
                 await self._auto_respond(
                     conversation_id,

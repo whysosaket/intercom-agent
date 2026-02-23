@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     DOC_AGENT_MAX_RESULTS: int = 5
     DOC_AGENT_PRODUCT_DESCRIPTION: str = company_config.product_description
 
+    # Pre-Check Agent
+    PRE_CHECK_ENABLED: bool = True
+    PRE_CHECK_MODEL: str = "gpt-5-mini"
+
     # Post-Processor
     POST_PROCESSOR_ENABLED: bool = True
     POST_PROCESSOR_MODEL: str = "gpt-5-mini"

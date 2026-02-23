@@ -9,7 +9,7 @@ from openai import AsyncOpenAI
 
 from app.agents.base import BaseAgent
 from app.agents.memory_agent import MemoryContext
-from app.models.schemas import ContactInfo, GeneratedResponse
+from app.models.schemas import ContactInfo, GeneratedResponse, PreCheckResult
 from app.prompts import SYSTEM_PROMPT, build_user_prompt
 
 if TYPE_CHECKING:
@@ -51,12 +51,24 @@ class ResponseAgent(BaseAgent):
         memory_context: MemoryContext,
         contact_info: ContactInfo | None = None,
         trace: TraceCollector | None = None,
+        precheck: PreCheckResult | None = None,
+        use_doc_fallback: bool = True,
     ) -> GeneratedResponse:
         """Generate an AI response with confidence score.
 
         1. Call OpenAI with context
         2. Apply confidence boost from memory (only if AI confidence >= threshold)
-        3. If below threshold, try Skill Agent fallback
+        3. If below threshold and use_doc_fallback is True, try Skill Agent fallback
+
+        Parameters
+        ----------
+        precheck:
+            Pre-check classification result. When provided, classification fields
+            (requires_human_intervention, is_followup, etc.) are taken from
+            the pre-check instead of the LLM output.
+        use_doc_fallback:
+            Whether to attempt the skill/doc agent fallback on low confidence.
+            Set to False for non-technical questions (KB_ONLY routing).
         """
         # Step 1: Primary OpenAI generation
         result = await self._call_openai(
@@ -65,6 +77,7 @@ class ResponseAgent(BaseAgent):
             relevant_memories=memory_context.global_matches,
             contact_info=contact_info,
             trace=trace,
+            precheck=precheck,
         )
 
         # Step 2: Apply memory-based confidence adjustment
@@ -103,9 +116,10 @@ class ResponseAgent(BaseAgent):
             adjusted_confidence,
         )
 
-        # Step 3: Skill Agent fallback
+        # Step 3: Skill Agent fallback (only if doc fallback is enabled)
         result, adjusted_confidence = await self._try_skill_fallback(
-            result, adjusted_confidence, customer_message, trace
+            result, adjusted_confidence, customer_message, trace,
+            use_doc_fallback=use_doc_fallback,
         )
 
         return GeneratedResponse(
@@ -124,13 +138,15 @@ class ResponseAgent(BaseAgent):
         adjusted_confidence: float,
         customer_message: str,
         trace: TraceCollector | None = None,
+        use_doc_fallback: bool = True,
     ) -> tuple[GeneratedResponse, float]:
         """Attempt skill agent fallback if confidence is below threshold.
 
         Returns the (possibly updated) result and adjusted confidence.
         """
-        # Only skip fallback if the user explicitly asked for a human agent.
-        skip_fallback = result.requires_human_intervention
+        # Skip fallback if the user explicitly asked for a human agent,
+        # or if the pre-check decided this is a KB-only question.
+        skip_fallback = result.requires_human_intervention or not use_doc_fallback
 
         if (
             self.skill_agent is not None
@@ -192,9 +208,12 @@ class ResponseAgent(BaseAgent):
                 self.logger.exception("Skill agent query failed")
 
         elif trace and self.skill_agent is not None:
-            if skip_fallback:
+            if result.requires_human_intervention:
                 skip_reason = "skipped (user requested human intervention)"
                 skip_input = f"requires_human={result.requires_human_intervention}"
+            elif not use_doc_fallback:
+                skip_reason = "skipped (KB-only routing, doc fallback disabled)"
+                skip_input = "use_doc_fallback=False (non-technical question)"
             else:
                 skip_reason = "skipped (confidence above threshold)"
                 skip_input = f"confidence {adjusted_confidence:.2f} >= threshold {self.threshold:.2f}"
@@ -215,8 +234,14 @@ class ResponseAgent(BaseAgent):
         relevant_memories: list[dict],
         contact_info: ContactInfo | None = None,
         trace: TraceCollector | None = None,
+        precheck: PreCheckResult | None = None,
     ) -> GeneratedResponse:
-        """Call OpenAI to generate a response with confidence score."""
+        """Call OpenAI to generate a response with confidence score.
+
+        The LLM now returns only ``response_text``, ``confidence``, and
+        ``reasoning``.  Classification fields (human intervention, follow-up,
+        answerability) come from the *precheck* result when available.
+        """
         user_prompt = build_user_prompt(
             customer_message, conversation_history, relevant_memories, contact_info
         )
@@ -234,14 +259,28 @@ class ResponseAgent(BaseAgent):
         self.logger.debug("[Primary Generation] LLM response: %s", raw)
         parsed = json.loads(raw)
 
+        # Classification fields come from precheck when available;
+        # fall back to LLM output for backward compatibility (e.g. chat UI
+        # tests that don't use the precheck agent).
+        if precheck is not None:
+            requires_human = precheck.requires_human_intervention
+            is_followup = precheck.is_followup
+            followup_ctx = precheck.followup_context
+            answerable = precheck.answerable_from_context
+        else:
+            requires_human = parsed.get("requires_human_intervention", False)
+            is_followup = parsed.get("is_followup", False)
+            followup_ctx = parsed.get("followup_context", "")
+            answerable = parsed.get("answerable_from_context", True)
+
         result = GeneratedResponse(
             text=parsed["response_text"],
             confidence=float(parsed["confidence"]),
             reasoning=parsed.get("reasoning", ""),
-            requires_human_intervention=parsed.get("requires_human_intervention", False),
-            is_followup=parsed.get("is_followup", False),
-            followup_context=parsed.get("followup_context", ""),
-            answerable_from_context=parsed.get("answerable_from_context", True),
+            requires_human_intervention=requires_human,
+            is_followup=is_followup,
+            followup_context=followup_ctx,
+            answerable_from_context=answerable,
         )
 
         if trace:
@@ -258,10 +297,11 @@ class ResponseAgent(BaseAgent):
                     "confidence": parsed["confidence"],
                     "reasoning": parsed.get("reasoning", ""),
                     "response_preview": parsed["response_text"][:200],
-                    "requires_human_intervention": parsed.get("requires_human_intervention", False),
-                    "is_followup": parsed.get("is_followup", False),
-                    "followup_context": parsed.get("followup_context", ""),
-                    "answerable_from_context": parsed.get("answerable_from_context", True),
+                    "precheck_used": precheck is not None,
+                    "requires_human_intervention": requires_human,
+                    "is_followup": is_followup,
+                    "followup_context": followup_ctx,
+                    "answerable_from_context": answerable,
                     "usage": {
                         "prompt_tokens": response.usage.prompt_tokens if response.usage else None,
                         "completion_tokens": response.usage.completion_tokens if response.usage else None,

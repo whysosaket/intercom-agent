@@ -6,6 +6,7 @@ from app.agents.memzero_agent import MemZeroAgent
 from app.agents.memory_agent import MemoryAgent, MemoryContext
 from app.agents.orchestrator_agent import OrchestratorAgent
 from app.agents.postprocessing_agent import PostProcessingAgent
+from app.agents.precheck_agent import PreCheckAgent
 from app.agents.response_agent import ResponseAgent
 from app.agents.slack_agent import SlackAgent
 
@@ -18,6 +19,7 @@ __all__ = [
     "MemoryContext",
     "OrchestratorAgent",
     "PostProcessingAgent",
+    "PreCheckAgent",
     "ResponseAgent",
     "SlackAgent",
 ]

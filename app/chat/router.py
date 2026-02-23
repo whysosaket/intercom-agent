@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.chat.session_manager import SessionManager, ChatMessage
 from app.chat.trace import TraceCollector
+from app.models.schemas import RoutingDecision
 from app.utils.trace_utils import safe_serialize_trace
 
 logger = logging.getLogger(__name__)
@@ -94,9 +95,12 @@ def _find_preceding_user_message(messages: list[ChatMessage], assistant_idx: int
 async def _handle_user_message(websocket, session, orchestrator, user_text):
     """Process a user message through the agent pipeline.
 
-    Routes by confidence just like production:
-    - High confidence (>= threshold) -> auto-sent
-    - Low confidence (< threshold) -> pending review with approve/edit/reject
+    Pipeline: Memory -> PreCheck -> (Route) -> Response -> PostProcessing -> Route
+
+    Three paths based on pre-check:
+    - ESCALATE: Immediate pending review (no answer generation)
+    - KB_ONLY: Answer from FAQ/memory only (no doc agent fallback)
+    - FULL_PIPELINE: Full answer generation with doc agent fallback
 
     Uses TraceCollector to capture per-call events from all agents for the UI.
     """
@@ -110,17 +114,82 @@ async def _handle_user_message(websocket, session, orchestrator, user_text):
         session.user_id, user_text, trace=trace
     )
 
-    # Step 2: Generate response via Response Agent
+    # Step 2: Pre-check classification (if enabled)
+    precheck = None
+    if orchestrator.precheck_agent:
+        precheck = await orchestrator.precheck_agent.classify(
+            customer_message=user_text,
+            conversation_history=memory_context.conversation_history,
+            global_matches=memory_context.global_matches,
+            trace=trace,
+        )
+
+        # Path A: Immediate escalation — no answer generation
+        if precheck.routing_decision == RoutingDecision.ESCALATE:
+            reasoning = f"[Pre-Check Escalation] {precheck.reasoning}"
+
+            # Record routing trace
+            with trace.step(
+                "Routing Decision",
+                "computation",
+                input_summary=f"precheck_route=ESCALATE",
+            ) as ev:
+                ev.output_summary = "Escalated (pending review)"
+                ev.details = {
+                    "threshold": orchestrator.threshold,
+                    "final_confidence": precheck.confidence_hint,
+                    "decision": "escalated_by_precheck",
+                    "reason": precheck.reasoning,
+                }
+
+            pipeline_trace = safe_serialize_trace(trace)
+            total_duration_ms = trace.total_duration_ms
+            logger.info(
+                "Pipeline trace: %d events, %dms total. Labels: %s",
+                len(pipeline_trace),
+                total_duration_ms,
+                [ev.get("label", "?") for ev in pipeline_trace],
+            )
+
+            ai_msg = ChatMessage(
+                role="assistant",
+                content="",
+                confidence=precheck.confidence_hint,
+                reasoning=reasoning,
+                status="pending_review",
+            )
+            session.messages.append(ai_msg)
+            await websocket.send_json(
+                {
+                    "type": "review_request",
+                    "content": "",
+                    "confidence": precheck.confidence_hint,
+                    "reasoning": reasoning,
+                    "message_index": len(session.messages) - 1,
+                    "pipeline_trace": pipeline_trace,
+                    "total_duration_ms": total_duration_ms,
+                }
+            )
+            return
+
+    # Step 3: Generate response via Response Agent
+    use_doc_fallback = (
+        precheck is None
+        or precheck.routing_decision == RoutingDecision.FULL_PIPELINE
+    )
+
     result = await orchestrator.response_agent.generate(
         customer_message=user_text,
         memory_context=memory_context,
         contact_info=None,
         trace=trace,
+        precheck=precheck,
+        use_doc_fallback=use_doc_fallback,
     )
     pre_postprocess_confidence = result.confidence
     pre_postprocess_text = result.text
 
-    # Step 3: Post-process via PostProcessing Agent
+    # Step 4: Post-process via PostProcessing Agent
     result = await orchestrator.postprocessing_agent.process(
         customer_message=user_text,
         generated_response=result,
@@ -128,9 +197,10 @@ async def _handle_user_message(websocket, session, orchestrator, user_text):
         conversation_history=memory_context.conversation_history,
     )
 
-    # Step 4: Routing decision — record as a trace event
+    # Step 5: Routing decision — record as a trace event
     final_confidence = result.confidence
     auto_sent = final_confidence >= orchestrator.threshold
+    precheck_route = precheck.routing_decision.value if precheck else "no_precheck"
     with trace.step(
         "Routing Decision",
         "computation",
@@ -142,6 +212,7 @@ async def _handle_user_message(websocket, session, orchestrator, user_text):
             "final_confidence": final_confidence,
             "pre_postprocess_confidence": pre_postprocess_confidence,
             "text_changed_in_postprocessing": pre_postprocess_text != result.text,
+            "precheck_route": precheck_route,
             "decision": "auto_sent" if auto_sent else "pending_review",
             "reason": (
                 f"Confidence {final_confidence:.0%} >= threshold {orchestrator.threshold:.0%}"
