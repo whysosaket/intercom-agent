@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, Request
@@ -37,8 +38,6 @@ def _extract_latest_message(payload: dict) -> str:
             body = data.get("source", {}).get("body", "")
 
     # Strip HTML tags (Intercom sends HTML)
-    import re
-
     return re.sub(r"<[^>]+>", "", body).strip()
 
 

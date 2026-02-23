@@ -1,4 +1,12 @@
+"""Application settings loaded from environment variables.
+
+Service credentials and operational tunables live here.
+Company-specific product data (names, URLs, FAQ) lives in ``app/company.py``.
+"""
+
 from pydantic_settings import BaseSettings
+
+from app.company import company_config
 
 
 class Settings(BaseSettings):
@@ -36,13 +44,13 @@ class Settings(BaseSettings):
     SKILL_AGENT_SYNTHESIS_MODEL: str = "gpt-5-mini"
     SKILL_AGENT_MAX_ITERATIONS: int = 4
 
-    # Doc Agent (Mintlify Documentation Search)
+    # Doc Agent (Documentation Search)
     DOC_AGENT_ENABLED: bool = True
-    DOC_AGENT_MINTLIFY_URL: str = "https://docs.mem0.ai"
+    DOC_AGENT_MINTLIFY_URL: str = company_config.documentation_url
     DOC_AGENT_MODEL: str = "gpt-5-mini"
     DOC_AGENT_CONFIDENCE_THRESHOLD: float = 0.6
     DOC_AGENT_MAX_RESULTS: int = 5
-    DOC_AGENT_PRODUCT_DESCRIPTION: str = ""
+    DOC_AGENT_PRODUCT_DESCRIPTION: str = company_config.product_description
 
     # Post-Processor
     POST_PROCESSOR_ENABLED: bool = True

@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 
+from app.company import company_config
 from app.config import settings
 from app.webhooks.intercom import router as intercom_router
 from app.webhooks import intercom as intercom_webhook
@@ -94,6 +95,7 @@ async def lifespan(app: FastAPI):
     postprocessing_agent = PostProcessingAgent(
         api_key=settings.OPENAI_API_KEY if settings.POST_PROCESSOR_ENABLED else None,
         model=settings.POST_PROCESSOR_MODEL,
+        company_cfg=company_config,
     )
     if postprocessing_agent.is_enabled:
         logger.info("Post-processing agent enabled (model=%s)", settings.POST_PROCESSOR_MODEL)
@@ -180,7 +182,10 @@ async def lifespan(app: FastAPI):
     logger.info("Shutdown complete")
 
 
-api = FastAPI(title="Intercom Auto-Responder", lifespan=lifespan)
+api = FastAPI(
+    title=f"{company_config.name} {company_config.support_platform_name} Auto-Responder",
+    lifespan=lifespan,
+)
 api.include_router(intercom_router)
 
 # Static files for chat UI

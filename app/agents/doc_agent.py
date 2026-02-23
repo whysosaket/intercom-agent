@@ -9,11 +9,15 @@ import httpx
 from openai import AsyncOpenAI
 
 from app.agents.base import BaseAgent
+from app.company import company_config
 from skill_consumer.schemas import SkillAgentResponse
 
 if TYPE_CHECKING:
     from app.chat.trace import TraceCollector
     from skill_consumer import SkillAgent
+
+# Maximum characters to keep from a fetched documentation page.
+_MAX_PAGE_CHARS = 15_000
 
 # ---------------------------------------------------------------------------
 # Prompts
@@ -80,6 +84,16 @@ You MUST respond with valid JSON and nothing else:
 """
 
 
+def _extract_usage(response) -> dict:
+    """Extract token usage from an OpenAI response."""
+    if response.usage:
+        return {
+            "prompt_tokens": response.usage.prompt_tokens,
+            "completion_tokens": response.usage.completion_tokens,
+        }
+    return {"prompt_tokens": None, "completion_tokens": None}
+
+
 class DocAgent(BaseAgent):
     """Searches Mintlify documentation and synthesises an answer.
 
@@ -94,7 +108,7 @@ class DocAgent(BaseAgent):
     def __init__(
         self,
         api_key: str,
-        mintlify_url: str = "https://docs.mem0.ai",
+        mintlify_url: str = "",
         product_description: str = "",
         model: str = "gpt-5-mini",
         confidence_threshold: float = 0.6,
@@ -103,8 +117,8 @@ class DocAgent(BaseAgent):
     ):
         super().__init__(name="doc")
         self.client = AsyncOpenAI(api_key=api_key)
-        self.mintlify_url = mintlify_url.rstrip("/")
-        self.product_description = product_description
+        self.mintlify_url = (mintlify_url or company_config.documentation_url).rstrip("/")
+        self.product_description = product_description or company_config.product_description
         self.model = model
         self.threshold = confidence_threshold
         self.skill_agent = skill_agent
@@ -141,21 +155,17 @@ class DocAgent(BaseAgent):
         doc_response: SkillAgentResponse | None = None
 
         try:
-            # 1. Rewrite the query for documentation search
             query = await self._rewrite_query(question, trace=trace)
             self.logger.info("Rewritten query: %s", query)
 
-            # 2. Fetch llms.txt and select relevant page URLs
             page_urls = await self._select_pages(query, trace=trace)
             self.logger.info("Selected %d doc pages", len(page_urls))
 
             if page_urls:
-                # 3. Fetch markdown content of each page
                 pages = await self._fetch_pages(page_urls, trace=trace)
                 self.logger.info("Fetched %d pages successfully", len(pages))
 
                 if pages:
-                    # 4. Synthesise response from page content
                     doc_response = await self._synthesize(question, pages, trace=trace)
                     self.logger.info(
                         "Doc synthesis confidence=%.2f", doc_response.confidence
@@ -175,20 +185,25 @@ class DocAgent(BaseAgent):
         except Exception:
             self.logger.exception("Doc agent search/synthesis failed")
 
-        # 5. Skill Agent fallback
+        # Skill Agent fallback
         if self.skill_agent is not None:
             try:
+                skill_result = await self.skill_agent.answer(question)
+                used = not (
+                    doc_response
+                    and doc_response.confidence > skill_result.confidence
+                )
+
                 if trace:
                     with trace.step(
                         "Skill Agent fallback (from Doc Agent)",
                         "agent_call",
-                        input_summary=f"doc_confidence={doc_response.confidence:.2f}" if doc_response else "doc_confidence=N/A",
+                        input_summary=(
+                            f"doc_confidence={doc_response.confidence:.2f}"
+                            if doc_response
+                            else "doc_confidence=N/A"
+                        ),
                     ) as ev:
-                        skill_result = await self.skill_agent.answer(question)
-                        used = not (
-                            doc_response
-                            and doc_response.confidence > skill_result.confidence
-                        )
                         ev.output_summary = (
                             f"confidence={skill_result.confidence:.2f}, used={used}"
                         )
@@ -198,21 +213,13 @@ class DocAgent(BaseAgent):
                             "skill_sources": skill_result.sources,
                             "used_skill_response": used,
                         }
-                        if not used:
-                            return doc_response
-                        return skill_result
-                else:
-                    skill_result = await self.skill_agent.answer(question)
-                    if (
-                        doc_response
-                        and doc_response.confidence > skill_result.confidence
-                    ):
-                        return doc_response
-                    return skill_result
+
+                if not used:
+                    return doc_response
+                return skill_result
             except Exception:
                 self.logger.exception("Skill agent fallback also failed")
 
-        # 6. Return best effort or empty
         if doc_response:
             return doc_response
 
@@ -234,55 +241,38 @@ class DocAgent(BaseAgent):
     ) -> str:
         """Use OpenAI to rewrite the customer message into a search query."""
         try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": QUERY_REWRITE_PROMPT.format(
+                            product_description=self.product_description
+                            or "A developer-facing product."
+                        ),
+                    },
+                    {"role": "user", "content": customer_message},
+                ],
+            )
+            rewritten = response.choices[0].message.content.strip()
+            self.logger.debug("[Step 1 - Query Rewrite] LLM response: %s", rewritten)
+
             if trace:
                 with trace.step(
                     f"OpenAI LLM call ({self.model})",
                     "llm_call",
                     input_summary=f"query rewrite, model={self.model}",
                 ) as ev:
-                    response = await self.client.chat.completions.create(
-                        model=self.model,
-                        messages=[
-                            {
-                                "role": "system",
-                                "content": QUERY_REWRITE_PROMPT.format(
-                                    product_description=self.product_description
-                                    or "A developer-facing product."
-                                ),
-                            },
-                            {"role": "user", "content": customer_message},
-                        ],
-                    )
-                    rewritten = response.choices[0].message.content.strip()
                     ev.output_summary = f"rewritten: {rewritten[:80]}"
                     ev.details = {
                         "model": self.model,
                         "purpose": "query_rewrite",
                         "original_message": customer_message[:200],
                         "rewritten_query": rewritten,
-                        "usage": {
-                            "prompt_tokens": response.usage.prompt_tokens if response.usage else None,
-                            "completion_tokens": response.usage.completion_tokens if response.usage else None,
-                        },
+                        "usage": _extract_usage(response),
                     }
-                    return rewritten if rewritten else customer_message
-            else:
-                response = await self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": QUERY_REWRITE_PROMPT.format(
-                                product_description=self.product_description
-                                or "A developer-facing product."
-                            ),
-                        },
-                        {"role": "user", "content": customer_message},
-                    ],
-                )
-                rewritten = response.choices[0].message.content.strip()
-                self.logger.debug("[Step 1 - Query Rewrite] LLM response: %s", rewritten)
-                return rewritten if rewritten else customer_message
+
+            return rewritten if rewritten else customer_message
         except Exception:
             self.logger.exception("Query rewrite failed, using original")
             return customer_message
@@ -296,28 +286,24 @@ class DocAgent(BaseAgent):
         assert self._http is not None
 
         # Fetch the full llms.txt index
+        llms_url = f"{self.mintlify_url}/llms.txt"
         try:
+            resp = await self._http.get(llms_url)
             if trace:
                 with trace.step(
                     "HTTP fetch: llms.txt",
                     "http_fetch",
-                    input_summary=f"GET {self.mintlify_url}/llms.txt",
+                    input_summary=f"GET {llms_url}",
                 ) as ev:
-                    resp = await self._http.get(f"{self.mintlify_url}/llms.txt")
                     ev.output_summary = f"status={resp.status_code}, size={len(resp.text)} chars"
                     ev.details = {
-                        "url": f"{self.mintlify_url}/llms.txt",
+                        "url": llms_url,
                         "status_code": resp.status_code,
                         "content_length": len(resp.text),
                     }
-                    if resp.status_code != 200:
-                        self.logger.warning("llms.txt returned %d", resp.status_code)
-                        return []
-            else:
-                resp = await self._http.get(f"{self.mintlify_url}/llms.txt")
-                if resp.status_code != 200:
-                    self.logger.warning("llms.txt returned %d", resp.status_code)
-                    return []
+            if resp.status_code != 200:
+                self.logger.warning("llms.txt returned %d", resp.status_code)
+                return []
         except Exception:
             self.logger.exception("Failed to fetch llms.txt")
             return []
@@ -326,68 +312,46 @@ class DocAgent(BaseAgent):
 
         # Ask LLM to pick the most relevant pages
         try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": PAGE_SELECTION_PROMPT},
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Query: {query}\n\n"
+                            f"llms.txt contents:\n{llms_txt}"
+                        ),
+                    },
+                ],
+                response_format={"type": "json_object"},
+            )
+            raw = response.choices[0].message.content.strip()
+            self.logger.debug("[Step 2 - Page Selection] LLM response: %s", raw)
+            parsed = json.loads(raw)
+
+            urls = parsed.get("urls", [])
+            if isinstance(urls, list):
+                urls = [u for u in urls if isinstance(u, str)][: self.max_results]
+            else:
+                urls = []
+
             if trace:
                 with trace.step(
                     f"OpenAI LLM call ({self.model})",
                     "llm_call",
                     input_summary=f"page selection, model={self.model}, llms_txt={len(llms_txt)} chars",
                 ) as ev:
-                    response = await self.client.chat.completions.create(
-                        model=self.model,
-                        messages=[
-                            {"role": "system", "content": PAGE_SELECTION_PROMPT},
-                            {
-                                "role": "user",
-                                "content": (
-                                    f"Query: {query}\n\n"
-                                    f"llms.txt contents:\n{llms_txt}"
-                                ),
-                            },
-                        ],
-                        response_format={"type": "json_object"},
-                    )
-                    raw = response.choices[0].message.content.strip()
-                    parsed = json.loads(raw)
-                    urls = parsed.get("urls", [])
-                    if isinstance(urls, list):
-                        urls = [u for u in urls if isinstance(u, str)][: self.max_results]
-                    else:
-                        urls = []
                     ev.output_summary = f"{len(urls)} pages selected"
                     ev.details = {
                         "model": self.model,
                         "purpose": "page_selection",
                         "selected_urls": urls,
                         "raw_response": raw[:500],
-                        "usage": {
-                            "prompt_tokens": response.usage.prompt_tokens if response.usage else None,
-                            "completion_tokens": response.usage.completion_tokens if response.usage else None,
-                        },
+                        "usage": _extract_usage(response),
                     }
-                    return urls
-            else:
-                response = await self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {"role": "system", "content": PAGE_SELECTION_PROMPT},
-                        {
-                            "role": "user",
-                            "content": (
-                                f"Query: {query}\n\n"
-                                f"llms.txt contents:\n{llms_txt}"
-                            ),
-                        },
-                    ],
-                    response_format={"type": "json_object"},
-                )
-                raw = response.choices[0].message.content.strip()
-                self.logger.debug("[Step 2 - Page Selection] LLM response: %s", raw)
-                parsed = json.loads(raw)
 
-                urls = parsed.get("urls", [])
-                if isinstance(urls, list):
-                    return [u for u in urls if isinstance(u, str)][: self.max_results]
-                return []
+            return urls
 
         except Exception:
             self.logger.exception("Page selection LLM call failed")
@@ -400,59 +364,50 @@ class DocAgent(BaseAgent):
     ) -> list[dict]:
         """Fetch each page's markdown content by appending .md to the URL."""
         assert self._http is not None
-        pages = []
+        pages: list[dict] = []
 
         for page_url in urls:
             md_url = page_url.rstrip("/") + ".md"
             try:
-                if trace:
-                    with trace.step(
-                        "HTTP fetch: doc page",
-                        "http_fetch",
-                        input_summary=f"GET {md_url}",
-                    ) as ev:
-                        resp = await self._http.get(md_url)
-                        if resp.status_code == 200:
-                            content = resp.text[:15_000]
-                            pages.append(
-                                {
-                                    "content": content,
-                                    "path": page_url,
-                                    "title": page_url.split("/")[-1].replace("-", " ").title(),
-                                }
-                            )
+                resp = await self._http.get(md_url)
+                if resp.status_code == 200:
+                    content = resp.text[:_MAX_PAGE_CHARS]
+                    title = page_url.split("/")[-1].replace("-", " ").title()
+                    pages.append({
+                        "content": content,
+                        "path": page_url,
+                        "title": title,
+                    })
+
+                    if trace:
+                        with trace.step(
+                            "HTTP fetch: doc page",
+                            "http_fetch",
+                            input_summary=f"GET {md_url}",
+                        ) as ev:
                             ev.output_summary = f"OK, {len(content)} chars"
                             ev.details = {
                                 "url": md_url,
                                 "status_code": 200,
                                 "content_length": len(content),
-                                "title": pages[-1]["title"],
+                                "title": title,
                             }
-                        else:
+                else:
+                    self.logger.debug(
+                        "Failed to fetch %s (status=%d)", md_url, resp.status_code
+                    )
+                    if trace:
+                        with trace.step(
+                            "HTTP fetch: doc page",
+                            "http_fetch",
+                            input_summary=f"GET {md_url}",
+                        ) as ev:
                             ev.status = "error"
                             ev.output_summary = f"status={resp.status_code}"
                             ev.details = {
                                 "url": md_url,
                                 "status_code": resp.status_code,
                             }
-                            self.logger.debug(
-                                "Failed to fetch %s (status=%d)", md_url, resp.status_code
-                            )
-                else:
-                    resp = await self._http.get(md_url)
-                    if resp.status_code == 200:
-                        content = resp.text[:15_000]
-                        pages.append(
-                            {
-                                "content": content,
-                                "path": page_url,
-                                "title": page_url.split("/")[-1].replace("-", " ").title(),
-                            }
-                        )
-                    else:
-                        self.logger.debug(
-                            "Failed to fetch %s (status=%d)", md_url, resp.status_code
-                        )
             except Exception:
                 self.logger.debug("Failed to fetch %s", md_url)
 
@@ -475,35 +430,37 @@ class DocAgent(BaseAgent):
         context_block = "\n".join(context_parts)
 
         try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": DOC_SYNTHESIS_PROMPT},
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Customer question: {question}\n\n"
+                            f"Documentation content:\n{context_block}"
+                        ),
+                    },
+                ],
+                response_format={"type": "json_object"},
+            )
+
+            synthesis_raw = response.choices[0].message.content
+            self.logger.debug("[Step 4 - Synthesis] LLM response: %s", synthesis_raw)
+            parsed = json.loads(synthesis_raw)
+            result = SkillAgentResponse(
+                answer_text=parsed.get("answer_text", ""),
+                confidence=float(parsed.get("confidence", 0.0)),
+                reasoning=f"[Doc Agent] {parsed.get('reasoning', '')}",
+                sources=parsed.get("sources", []),
+            )
+
             if trace:
                 with trace.step(
                     f"OpenAI LLM call ({self.model})",
                     "llm_call",
                     input_summary=f"doc synthesis, model={self.model}, {len(pages)} pages, {len(context_block)} chars",
                 ) as ev:
-                    response = await self.client.chat.completions.create(
-                        model=self.model,
-                        messages=[
-                            {"role": "system", "content": DOC_SYNTHESIS_PROMPT},
-                            {
-                                "role": "user",
-                                "content": (
-                                    f"Customer question: {question}\n\n"
-                                    f"Documentation content:\n{context_block}"
-                                ),
-                            },
-                        ],
-                        response_format={"type": "json_object"},
-                    )
-
-                    synthesis_raw = response.choices[0].message.content
-                    parsed = json.loads(synthesis_raw)
-                    result = SkillAgentResponse(
-                        answer_text=parsed.get("answer_text", ""),
-                        confidence=float(parsed.get("confidence", 0.0)),
-                        reasoning=f"[Doc Agent] {parsed.get('reasoning', '')}",
-                        sources=parsed.get("sources", []),
-                    )
                     ev.output_summary = f"confidence={result.confidence:.2f}"
                     ev.details = {
                         "model": self.model,
@@ -513,37 +470,10 @@ class DocAgent(BaseAgent):
                         "sources": result.sources,
                         "answer_preview": result.answer_text[:200],
                         "raw_response": synthesis_raw[:500],
-                        "usage": {
-                            "prompt_tokens": response.usage.prompt_tokens if response.usage else None,
-                            "completion_tokens": response.usage.completion_tokens if response.usage else None,
-                        },
+                        "usage": _extract_usage(response),
                     }
-                    return result
-            else:
-                response = await self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {"role": "system", "content": DOC_SYNTHESIS_PROMPT},
-                        {
-                            "role": "user",
-                            "content": (
-                                f"Customer question: {question}\n\n"
-                                f"Documentation content:\n{context_block}"
-                            ),
-                        },
-                    ],
-                    response_format={"type": "json_object"},
-                )
 
-                synthesis_raw = response.choices[0].message.content
-                self.logger.debug("[Step 4 - Synthesis] LLM response: %s", synthesis_raw)
-                parsed = json.loads(synthesis_raw)
-                return SkillAgentResponse(
-                    answer_text=parsed.get("answer_text", ""),
-                    confidence=float(parsed.get("confidence", 0.0)),
-                    reasoning=f"[Doc Agent] {parsed.get('reasoning', '')}",
-                    sources=parsed.get("sources", []),
-                )
+            return result
 
         except Exception:
             self.logger.exception("Doc synthesis failed")

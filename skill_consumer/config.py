@@ -1,5 +1,7 @@
 from dataclasses import dataclass, field
 
+from app.company import company_config
+
 
 @dataclass
 class SkillAgentConfig:
@@ -31,9 +33,5 @@ class SkillAgentConfig:
     enable_url_fetch: bool = True
     enable_script_execution: bool = True
     allowed_fetch_domains: list[str] = field(
-        default_factory=lambda: [
-            "docs.mem0.ai",
-            "github.com",
-            "raw.githubusercontent.com",
-        ]
+        default_factory=lambda: list(company_config.allowed_fetch_domains)
     )

@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from app.company import company_config
+
 if TYPE_CHECKING:
     from app.agents.memzero_agent import MemZeroAgent
     from app.agents.orchestrator_agent import OrchestratorAgent
@@ -248,7 +250,8 @@ class SyncService:
         self, messages: list[dict], conversation_id: str
     ) -> str:
         """Format messages into a single string with structured turn markers."""
-        lines = [f"Intercom conversation {conversation_id}:"]
+        platform = company_config.support_platform_name
+        lines = [f"{platform} conversation {conversation_id}:"]
         for msg in messages:
             prefix = "Customer said" if msg["role"] == "user" else "Support said"
             lines.append(f"{prefix}: {msg['content']}")

@@ -92,8 +92,8 @@ You will receive:
 
 ## Link References
 
-- When the retrieved documentation contains URLs (e.g., docs.mem0.ai links), include them inline in your answer using markdown: [descriptive text](url).
-- Prefer linking to documentation over embedding code. For example: "You can add memory using `client.add(messages, user_id=\"...\")`. See [Add Memory docs](https://docs.mem0.ai/...) for all parameters."
+- When the retrieved documentation contains URLs, include them inline in your answer using markdown: [descriptive text](url).
+- Prefer linking to documentation over embedding code. For example: "You can add memory using `client.add(messages, user_id=\"...\")`. See [Add Memory docs](https://docs.example.com/...) for all parameters."
 - Always include the source file paths or URLs in the sources array.
 
 ## Rules

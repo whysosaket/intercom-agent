@@ -72,7 +72,8 @@ async def fetch_url(url: str, allowed_domains: list[str] | None = None) -> dict:
     Only fetches from allowed domains.
     """
     if allowed_domains is None:
-        allowed_domains = ["docs.mem0.ai", "github.com", "raw.githubusercontent.com"]
+        from app.company import company_config
+        allowed_domains = list(company_config.allowed_fetch_domains)
 
     parsed = urlparse(url)
     if parsed.hostname not in allowed_domains:
