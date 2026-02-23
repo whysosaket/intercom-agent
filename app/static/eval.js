@@ -191,7 +191,7 @@ async function generateResponses() {
     generateBtn.textContent = "Generating...";
 
     const userMessages = selectedConv.messages.filter(m => m.role === "user");
-    const customerMessage = userMessages.length > 0 ? userMessages[userMessages.length - 1].content : "";
+    const customerMessage = userMessages.map(m => m.content).join("\n");
 
     if (!customerMessage) {
         candidatesContent.innerHTML = '<div class="empty-state"><p>No customer message found in this conversation.</p></div>';
@@ -264,7 +264,7 @@ async function generateAll() {
     // Build the request items
     const items = toGenerate.map(conv => {
         const userMessages = conv.messages.filter(m => m.role === "user");
-        const customerMessage = userMessages.length > 0 ? userMessages[userMessages.length - 1].content : "";
+        const customerMessage = userMessages.map(m => m.content).join("\n");
         return {
             conversation_id: conv.conversation_id,
             customer_message: customerMessage,
@@ -551,9 +551,9 @@ async function approveAndSend(convId, responseText) {
     const conv = conversations.find(c => c.conversation_id === convId);
     const userId = conv?.contact?.email || conv?.contact?.id || convId;
 
-    // Get the last customer message for memory storage
+    // Combine all customer messages for memory storage
     const userMessages = conv?.messages?.filter(m => m.role === "user") || [];
-    const customerMessage = userMessages.length > 0 ? userMessages[userMessages.length - 1].content : "";
+    const customerMessage = userMessages.map(m => m.content).join("\n");
 
     try {
         const res = await fetch("/eval/send", {
