@@ -28,8 +28,14 @@
                     <option value="100">100</option>
                 </select>
                 <button id="fetch-btn" class="btn btn-primary" type="button">Fetch Conversations</button>
-                <button id="generate-all-btn" class="btn btn-accent" type="button" disabled>Generate All</button>
-                <button id="generate-nonanswered-btn" class="btn btn-accent" type="button" disabled>Generate Non-Answered</button>
+                <div class="split-btn-group" id="generate-split-btn">
+                    <button id="generate-batch-btn" class="btn btn-accent split-btn-main" type="button" disabled>Generate Unanswered</button>
+                    <button id="generate-batch-toggle" class="btn btn-accent split-btn-toggle" type="button" disabled aria-label="Choose generation mode" aria-haspopup="true" aria-expanded="false"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                    <div id="generate-batch-menu" class="split-btn-menu hidden">
+                        <button class="split-btn-option selected" data-mode="unanswered" type="button">Generate Unanswered</button>
+                        <button class="split-btn-option" data-mode="all" type="button">Generate All</button>
+                    </div>
+                </div>
             </div>
         </header>
 

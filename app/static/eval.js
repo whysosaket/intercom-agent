@@ -12,10 +12,12 @@ let editingText = "";
 
 // DOM elements
 const fetchBtn = document.getElementById("fetch-btn");
-const generateAllBtn = document.getElementById("generate-all-btn");
-const generateNonAnsweredBtn = document.getElementById("generate-nonanswered-btn");
+const generateBatchBtn = document.getElementById("generate-batch-btn");
+const generateBatchToggle = document.getElementById("generate-batch-toggle");
+const generateBatchMenu = document.getElementById("generate-batch-menu");
 const fetchLimitSelect = document.getElementById("fetch-limit");
 const statusInfo = document.getElementById("status-info");
+let generateMode = "unanswered"; // "unanswered" or "all"
 const convList = document.getElementById("conv-list");
 const convCount = document.getElementById("conv-count");
 const messagePanelTitle = document.getElementById("message-panel-title");
@@ -33,8 +35,8 @@ fetchBtn.addEventListener("click", fetchConversations);
 
 async function fetchConversations() {
     fetchBtn.disabled = true;
-    generateAllBtn.disabled = true;
-    generateNonAnsweredBtn.disabled = true;
+    generateBatchBtn.disabled = true;
+    generateBatchToggle.disabled = true;
     statusInfo.textContent = "Fetching...";
     convList.innerHTML = '<div class="loading-state"><div class="spinner"></div><p>Fetching conversations from Intercom...</p></div>';
 
@@ -63,8 +65,8 @@ async function fetchConversations() {
         }
 
         convCount.textContent = conversations.length > 0 ? `${conversations.length}` : "";
-        generateAllBtn.disabled = conversations.length === 0;
-        generateNonAnsweredBtn.disabled = conversations.length === 0;
+        generateBatchBtn.disabled = conversations.length === 0;
+        generateBatchToggle.disabled = conversations.length === 0;
         renderConversationList();
 
     } catch (err) {
@@ -250,14 +252,61 @@ async function generateResponses() {
     }
 }
 
-// ─── Generate All / Generate Non-Answered ───
+// ─── Split-button: Generate Unanswered / Generate All ───
 
-generateAllBtn.addEventListener("click", generateAll);
-generateNonAnsweredBtn.addEventListener("click", generateNonAnswered);
+generateBatchBtn.addEventListener("click", runBatchGenerate);
+
+generateBatchToggle.addEventListener("click", () => {
+    const isOpen = !generateBatchMenu.classList.contains("hidden");
+    generateBatchMenu.classList.toggle("hidden", isOpen);
+    generateBatchToggle.setAttribute("aria-expanded", String(!isOpen));
+});
+
+// Close menu on outside click
+document.addEventListener("click", (e) => {
+    if (!e.target.closest("#generate-split-btn")) {
+        generateBatchMenu.classList.add("hidden");
+        generateBatchToggle.setAttribute("aria-expanded", "false");
+    }
+});
+
+// Handle menu option selection
+generateBatchMenu.addEventListener("click", (e) => {
+    const option = e.target.closest(".split-btn-option");
+    if (!option) return;
+
+    generateMode = option.dataset.mode;
+    generateBatchBtn.textContent = option.textContent;
+    generateBatchMenu.querySelectorAll(".split-btn-option").forEach(el => {
+        el.classList.toggle("selected", el === option);
+    });
+    generateBatchMenu.classList.add("hidden");
+    generateBatchToggle.setAttribute("aria-expanded", "false");
+});
+
+async function runBatchGenerate() {
+    const skipAnswered = generateMode === "unanswered";
+
+    const toGenerate = conversations.filter(c => {
+        if (candidatesMap.has(c.conversation_id)) return false;
+        if (sentConversations.has(c.conversation_id)) return false;
+        if (skipAnswered && c.has_admin_reply) return false;
+        return true;
+    });
+
+    if (toGenerate.length === 0) {
+        statusInfo.textContent = skipAnswered
+            ? "No unanswered conversations to generate for."
+            : "No eligible conversations to generate for.";
+        return;
+    }
+
+    await _generateForConversations(toGenerate);
+}
 
 async function _generateForConversations(toGenerate) {
-    generateAllBtn.disabled = true;
-    generateNonAnsweredBtn.disabled = true;
+    generateBatchBtn.disabled = true;
+    generateBatchToggle.disabled = true;
     fetchBtn.disabled = true;
     generateBtn.disabled = true;
 
@@ -346,8 +395,8 @@ async function _generateForConversations(toGenerate) {
             generatingSet.delete(conv.conversation_id);
         }
     } finally {
-        generateAllBtn.disabled = false;
-        generateNonAnsweredBtn.disabled = false;
+        generateBatchBtn.disabled = false;
+        generateBatchToggle.disabled = false;
         fetchBtn.disabled = false;
         if (selectedConvId) generateBtn.disabled = false;
 
@@ -358,38 +407,6 @@ async function _generateForConversations(toGenerate) {
             renderCandidates(selectedConvId);
         }
     }
-}
-
-async function generateAll() {
-    // Generate for all conversations that don't already have candidates, aren't sent, and aren't answered
-    const toGenerate = conversations.filter(c =>
-        !candidatesMap.has(c.conversation_id) &&
-        !sentConversations.has(c.conversation_id) &&
-        !c.has_admin_reply
-    );
-
-    if (toGenerate.length === 0) {
-        statusInfo.textContent = "No eligible conversations to generate for.";
-        return;
-    }
-
-    await _generateForConversations(toGenerate);
-}
-
-async function generateNonAnswered() {
-    // Generate only for conversations without an admin reply
-    const toGenerate = conversations.filter(c =>
-        !candidatesMap.has(c.conversation_id) &&
-        !sentConversations.has(c.conversation_id) &&
-        !c.has_admin_reply
-    );
-
-    if (toGenerate.length === 0) {
-        statusInfo.textContent = "No non-answered conversations to generate for.";
-        return;
-    }
-
-    await _generateForConversations(toGenerate);
 }
 
 // ─── Report ───
