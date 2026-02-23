@@ -14,6 +14,7 @@ class RoutingDecision(str, Enum):
     """Pre-check routing decision for the pipeline."""
 
     ESCALATE = "escalate"  # Skip answer generation, go straight to human
+    GREETING = "greeting"  # Auto-reply with a greeting, no LLM needed
     KB_ONLY = "kb_only"  # Answer from FAQ/memory only, no doc agent
     FULL_PIPELINE = "full_pipeline"  # Full answer generation + doc agent fallback
 
@@ -29,6 +30,7 @@ class PreCheckResult(BaseModel):
     answerable_from_context: bool = True
     reasoning: str = ""
     confidence_hint: float = 0.0
+    greeting_response: str = ""  # Auto-reply text for greeting messages
 
 
 class GeneratedResponse(BaseModel):

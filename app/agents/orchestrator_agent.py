@@ -211,6 +211,18 @@ class OrchestratorAgent(BaseAgent):
                     )
                     return
 
+                # Path B: Greeting — auto-reply without LLM answer generation
+                if precheck.routing_decision == RoutingDecision.GREETING:
+                    greeting_text = precheck.greeting_response or "Hey, how can I help you?"
+                    self.logger.info(
+                        "Conversation %s: greeting auto-reply",
+                        conversation_id,
+                    )
+                    await self._auto_respond(
+                        conversation_id, mem_user_id, message_body, greeting_text
+                    )
+                    return
+
             # Step 3: Generate response via Response Agent
             # use_doc_fallback is True only for FULL_PIPELINE routing
             use_doc_fallback = (

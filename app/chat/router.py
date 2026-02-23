@@ -172,6 +172,55 @@ async def _handle_user_message(websocket, session, orchestrator, user_text):
             )
             return
 
+        # Path B: Greeting — auto-reply without LLM answer generation
+        if precheck.routing_decision == RoutingDecision.GREETING:
+            greeting_text = precheck.greeting_response or "Hey, how can I help you?"
+
+            with trace.step(
+                "Routing Decision",
+                "computation",
+                input_summary="precheck_route=GREETING",
+            ) as ev:
+                ev.output_summary = "Greeting auto-reply"
+                ev.details = {
+                    "decision": "greeting_auto_reply",
+                    "greeting_text": greeting_text,
+                    "reason": precheck.reasoning,
+                }
+
+            pipeline_trace = safe_serialize_trace(trace)
+            total_duration_ms = trace.total_duration_ms
+            logger.info(
+                "Pipeline trace: %d events, %dms total. Labels: %s",
+                len(pipeline_trace),
+                total_duration_ms,
+                [ev.get("label", "?") for ev in pipeline_trace],
+            )
+
+            ai_msg = ChatMessage(
+                role="assistant",
+                content=greeting_text,
+                confidence=1.0,
+                reasoning="[Greeting] Auto-reply",
+                status="sent",
+            )
+            session.messages.append(ai_msg)
+            await orchestrator.memory_agent.store_exchange(
+                session.user_id, user_text, greeting_text
+            )
+            await websocket.send_json(
+                {
+                    "type": "ai_response",
+                    "content": greeting_text,
+                    "confidence": 1.0,
+                    "reasoning": "[Greeting] Auto-reply",
+                    "auto_sent": True,
+                    "pipeline_trace": pipeline_trace,
+                    "total_duration_ms": total_duration_ms,
+                }
+            )
+            return
+
     # Step 3: Generate response via Response Agent
     use_doc_fallback = (
         precheck is None

@@ -208,6 +208,30 @@ async def _generate_for_conversation(
                     })
                     continue
 
+                # If pre-check detects a greeting, record as a high-confidence auto-reply
+                if precheck.routing_decision == RoutingDecision.GREETING:
+                    greeting_text = precheck.greeting_response or "Hey, how can I help you?"
+                    with trace.step(
+                        "Routing Decision", "computation",
+                        input_summary="precheck_route=GREETING",
+                    ) as ev:
+                        ev.output_summary = "Greeting auto-reply"
+                        ev.details = {
+                            "decision": "greeting_auto_reply",
+                            "greeting_text": greeting_text,
+                            "reason": precheck.reasoning,
+                        }
+
+                    candidates.append({
+                        "index": i,
+                        "text": greeting_text,
+                        "confidence": 1.0,
+                        "reasoning": "[Greeting] Auto-reply",
+                        "pipeline_trace": safe_serialize_trace(trace),
+                        "total_duration_ms": trace.total_duration_ms,
+                    })
+                    continue
+
             use_doc_fallback = (
                 precheck is None
                 or precheck.routing_decision == RoutingDecision.FULL_PIPELINE

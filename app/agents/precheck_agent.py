@@ -55,7 +55,10 @@ Sub-products:
 
 ## CLASSIFICATION RULES
 
-### Step 1: Detect if user wants a human
+### Step 1: Detect greetings
+If the message is ONLY a greeting with no question or request (e.g., "hey", "hi", "hello", "good morning", "what's up", "yo"), set routing_decision="greeting" and greeting_response to a short, natural greeting like "Hey, how can I help you?" or "Hi there, how can I help?". Do NOT escalate greetings. Confidence_hint should be 1.0 for greetings.
+
+### Step 2: Detect if user wants a human
 If the message matches any of these patterns (case-insensitive), set requires_human_intervention=true and routing_decision="escalate":
 - "talk to a human" / "speak to a human" / "speak with a person"
 - "transfer me" / "connect me to an agent" / "connect me to support"
@@ -64,12 +67,12 @@ If the message matches any of these patterns (case-insensitive), set requires_hu
 - "this bot is not helping" / "I need human help"
 - "let me speak to someone" / "real human please"
 
-### Step 2: Detect follow-ups
+### Step 3: Detect follow-ups
 If the message references a previous conversation turn ("how soon?", "what about...", "and the pricing?", uses pronouns like "it", "that", "this" referring to earlier topics), set is_followup=true and followup_context to a brief description.
 
 For follow-ups, check: does the conversation history contain the SPECIFIC information needed to answer? A topic being mentioned does not mean the specific answer exists. Example: "We will roll out X soon" + user asks "how soon?" = topic exists but specific date does NOT. Set answerable_from_context=false.
 
-### Step 3: Assess answerability
+### Step 4: Assess answerability
 Can this question be answered from the FAQ list, product context, or conversation history provided?
 
 Set answerable_from_context=false and routing_decision="escalate" when:
@@ -80,14 +83,17 @@ Set answerable_from_context=false and routing_decision="escalate" when:
 - Question is a follow-up but the specific answer is not in context
 - Question requires information not present in any provided source
 
-### Step 4: Classify question type
-- TECHNICAL: Questions about API usage, code, integration, SDK, setup, configuration, implementation, MCP, debugging, errors, technical features
-- NON_TECHNICAL: Questions about pricing, account management, billing, general product info, feature availability, account deletion, data export, general "what is" questions
+### Step 5: Classify question type
+- TECHNICAL: Questions about API usage, code, integration, SDK, setup, configuration, implementation, MCP, debugging, errors, technical features. ALSO includes questions asking HOW to use product features (e.g., "how do I use graph memories?", "how do I add memories?", "how to set up OpenMemory?") — these need documentation.
+- NON_TECHNICAL: Questions ONLY about pricing, account management, billing, account deletion, data export. Simple "what is X?" questions where the answer is fully covered by the product context above.
 
-### Step 5: Decide routing
+IMPORTANT: If the question is about a product feature and could require implementation details, code examples, or setup steps, classify as TECHNICAL even if it sounds like a general question. For example "how does graph memory work?" is TECHNICAL because the answer requires documentation content.
+
+### Step 6: Decide routing
+- "greeting": Message is just a greeting with no question. Auto-reply with a friendly greeting.
 - "escalate": User asked for human, OR question is unanswerable from provided context (timelines, account-specific, off-topic, unsupported follow-up)
 - "kb_only": Question is NON-TECHNICAL and answerable from FAQ or product context. No need for documentation search.
-- "full_pipeline": Question is TECHNICAL and potentially answerable. May need documentation search if FAQ/memory don't cover it.
+- "full_pipeline": Question is TECHNICAL or product-feature related and potentially answerable. May need documentation search if FAQ/memory don't cover it.
 
 ---
 
@@ -104,15 +110,16 @@ Provide a rough confidence estimate for the downstream answer generator:
 
 Return ONLY valid JSON:
 {{
-    "intent_category": "direct_faq_match|supported_by_context|not_supported|off_topic|user_asked_for_human",
+    "intent_category": "greeting|direct_faq_match|supported_by_context|not_supported|off_topic|user_asked_for_human",
     "question_type": "technical|non_technical",
-    "routing_decision": "escalate|kb_only|full_pipeline",
+    "routing_decision": "greeting|escalate|kb_only|full_pipeline",
     "requires_human_intervention": false,
     "is_followup": false,
     "followup_context": "",
     "answerable_from_context": true,
     "reasoning": "brief justification",
-    "confidence_hint": 0.0
+    "confidence_hint": 0.0,
+    "greeting_response": ""
 }}"""
 
 
@@ -183,6 +190,7 @@ class PreCheckAgent(BaseAgent):
             answerable_from_context=parsed.get("answerable_from_context", True),
             reasoning=parsed.get("reasoning", ""),
             confidence_hint=float(parsed.get("confidence_hint", 0.0)),
+            greeting_response=parsed.get("greeting_response", ""),
         )
 
         if trace:
