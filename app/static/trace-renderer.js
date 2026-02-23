@@ -1,26 +1,30 @@
 // ─── Shared Pipeline Trace Renderer ───
 // Used by both chat.js and eval.js
 
-const ZINC_500 = "#71717a";
-const ZINC_600 = "#52525b";
-const ZINC_700 = "#3f3f46";
+// Colors aligned with the new design system
+const ACCENT_500 = "#6366f1";
+const ACCENT_600 = "#4f46e5";
+const GRAY_500 = "#6b7280";
+const GRAY_600 = "#4b5563";
+const SUCCESS = "#059669";
+const WARNING = "#d97706";
 
 const CALL_TYPE_CONFIG = {
-    mem0_search: { icon: "M", color: ZINC_600, label: "Mem0" },
-    llm_call: { icon: "AI", color: ZINC_700, label: "LLM" },
-    http_fetch: { icon: "H", color: ZINC_500, label: "HTTP" },
-    computation: { icon: "C", color: ZINC_600, label: "Compute" },
-    agent_call: { icon: "A", color: ZINC_700, label: "Agent" },
+    mem0_search: { icon: "M", color: ACCENT_600, label: "Mem0" },
+    llm_call: { icon: "AI", color: ACCENT_500, label: "LLM" },
+    http_fetch: { icon: "H", color: GRAY_600, label: "HTTP" },
+    computation: { icon: "C", color: GRAY_500, label: "Compute" },
+    agent_call: { icon: "A", color: ACCENT_600, label: "Agent" },
 };
 
 function getCallTypeConfig(callType) {
-    return CALL_TYPE_CONFIG[callType] || { icon: "?", color: ZINC_500, label: callType };
+    return CALL_TYPE_CONFIG[callType] || { icon: "?", color: GRAY_500, label: callType };
 }
 
 function getConfidenceColor(confidence) {
-    if (confidence >= 0.8) return "#52525b";
-    if (confidence >= 0.5) return "#71717a";
-    return "#3f3f46";
+    if (confidence >= 0.8) return SUCCESS;
+    if (confidence >= 0.5) return WARNING;
+    return "#dc2626";
 }
 
 function getConfidenceClass(confidence) {
@@ -64,7 +68,7 @@ function buildEventHtml(event, index) {
                 <div class="event-header">
                     <div class="event-title-area">
                         <div class="event-title">
-                            <span class="call-type-badge" style="background:${config.color}15;color:${config.color}">${config.label}</span>
+                            <span class="call-type-badge" style="background:${config.color}12;color:${config.color}">${config.label}</span>
                             ${escapeHtml(event.label)}
                         </div>
                         <div class="event-summary">

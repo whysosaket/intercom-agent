@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="var(--bg-app)">
+    <meta name="theme-color" content="#ffffff">
     <title>Intercom Responder — Chat</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Geist+Sans:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/chat.css">
 </head>
 <body>
@@ -18,6 +18,7 @@
                 <span id="session-info" class="session-badge" aria-live="polite"></span>
             </div>
             <div class="header-right">
+                <a href="/eval" class="btn btn-nav">Evals <span aria-hidden="true">&rarr;</span></a>
                 <button id="new-session-btn" class="btn btn-primary" type="button">New Session</button>
             </div>
         </header>
@@ -27,7 +28,7 @@
                 <div id="chat-messages" class="chat-messages" role="log" aria-live="polite">
                     <div class="empty-state">
                         <p>Start a new session to begin testing.</p>
-                        <p class="hint">Click “New Session” above, then type a customer message below.</p>
+                        <p class="hint">Click "New Session" above, then type a customer message below.</p>
                     </div>
                 </div>
                 <div id="input-area" class="input-area">

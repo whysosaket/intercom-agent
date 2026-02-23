@@ -242,7 +242,7 @@ function appendSystemMessage(content) {
 
     const bubble = document.createElement("div");
     bubble.className = "message assistant";
-    bubble.style.color = "var(--zinc-600)";
+    bubble.style.color = "var(--text-secondary)";
     bubble.style.fontStyle = "italic";
     bubble.textContent = content;
 
