@@ -1,4 +1,5 @@
-.PHONY: build up down logs restart shell mock prod-build prod-up prod-down prod-logs
+.PHONY: build up down logs restart shell mock prod-build prod-up prod-down prod-logs \
+       frontend-install frontend-dev frontend-build dev
 
 # Development
 build:
@@ -22,6 +23,20 @@ shell:
 # Local mock mode (no Docker, no external services needed)
 mock:
 	MOCK_MODE=true uvicorn app.main:api --host 0.0.0.0 --port 8000 --reload
+
+# Frontend
+frontend-install:
+	cd frontend && pnpm install
+
+frontend-dev:
+	cd frontend && pnpm run dev
+
+frontend-build:
+	cd frontend && pnpm run build
+
+# Full local dev (backend mock + frontend dev server)
+dev:
+	$(MAKE) -j2 mock frontend-dev
 
 # Production (with Nginx + SSL)
 prod-build:

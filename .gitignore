@@ -40,3 +40,7 @@ nginx/ssl/
 
 # Synced data
 data/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/

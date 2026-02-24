@@ -8,8 +8,6 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from starlette.responses import StreamingResponse
 
@@ -21,7 +19,6 @@ from app.utils.trace_utils import safe_serialize_trace
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/eval", tags=["eval"])
-templates = Jinja2Templates(directory="app/templates")
 
 
 # ── Request / Response models ──
@@ -55,12 +52,6 @@ class FetchRequest(BaseModel):
 
 
 # ── Routes ──
-
-
-@router.get("", response_class=HTMLResponse)
-async def eval_page(request: Request):
-    """Serve the eval mode UI."""
-    return templates.TemplateResponse(request, "eval.html")
 
 
 def _get_intercom_orchestrator(request: Request):

@@ -3,8 +3,6 @@
 import logging
 
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 
 from app.chat.session_manager import SessionManager, ChatMessage
 from app.chat.trace import TraceCollector
@@ -14,14 +12,7 @@ from app.utils.trace_utils import safe_serialize_trace
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["chat"])
-templates = Jinja2Templates(directory="app/templates")
 session_manager = SessionManager()
-
-
-@router.get("/chat", response_class=HTMLResponse)
-async def chat_page(request: Request):
-    """Serve the chat testing UI."""
-    return templates.TemplateResponse(request, "chat.html")
 
 
 @router.post("/chat/sessions")

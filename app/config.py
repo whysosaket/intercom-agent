@@ -67,6 +67,9 @@ class Settings(BaseSettings):
     MOCK_MODE: bool = False
     CHAT_UI_ENABLED: bool = True
 
+    # Frontend CORS origins (comma-separated)
+    FRONTEND_ORIGINS: str = "http://localhost:5173,http://localhost:4173"
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 

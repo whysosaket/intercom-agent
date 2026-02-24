@@ -7,6 +7,12 @@ services:
     restart: unless-stopped
     command: uvicorn app.main:api --host 0.0.0.0 --port 8000 --workers 2
 
+  frontend:
+    build: ./frontend
+    expose:
+      - "80"
+    restart: unless-stopped
+
   nginx:
     image: nginx:alpine
     ports:
@@ -17,4 +23,5 @@ services:
       - ./nginx/ssl:/etc/nginx/ssl:ro
     depends_on:
       - app
+      - frontend
     restart: unless-stopped

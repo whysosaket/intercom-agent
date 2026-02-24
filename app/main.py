@@ -2,7 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
-from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.company import company_config
 from app.config import settings
@@ -201,10 +201,14 @@ api = FastAPI(
     title=f"{company_config.name} {company_config.support_platform_name} Auto-Responder",
     lifespan=lifespan,
 )
+api.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in settings.FRONTEND_ORIGINS.split(",") if o.strip()],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 api.include_router(intercom_router)
-
-# Static files for chat UI
-api.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 # Chat UI (conditional)
 if settings.CHAT_UI_ENABLED:
