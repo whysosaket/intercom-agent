@@ -10,7 +10,7 @@ interface AppHeaderProps {
 export function AppHeader({ statusBadge, actions }: AppHeaderProps) {
   const location = useLocation()
   const isChat = location.pathname === "/chat" || location.pathname === "/"
-  const pageLabel = isChat ? "Chat" : "Eval"
+  const pageLabel = isChat ? "Chat" : "Dashboard"
 
   return (
     <header className="flex items-center justify-between h-14 px-5 border-b border-cream-200 bg-elevated flex-shrink-0">
@@ -27,7 +27,7 @@ export function AppHeader({ statusBadge, actions }: AppHeaderProps) {
         {isChat ? (
           <Link to="/dashboard">
             <Button variant="ghost" size="sm">
-              Evals &rarr;
+              Dashboard &rarr;
             </Button>
           </Link>
         ) : (

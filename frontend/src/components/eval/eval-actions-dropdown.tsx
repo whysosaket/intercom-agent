@@ -87,7 +87,7 @@ export function EvalActionsDropdown({
           className="h-8 gap-1.5 rounded-lg px-3 border-cream-200 bg-cream-50 text-cream-900 hover:bg-cream-100"
           disabled={disabled}
         >
-          Eval actions
+          Actions
           <ChevronDownIcon
             className={cn("size-4 transition-transform", open && "rotate-180")}
           />
