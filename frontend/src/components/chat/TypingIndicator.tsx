@@ -1,11 +1,20 @@
 export function TypingIndicator() {
   return (
-    <div className="flex items-start gap-3 justify-start">
-      <div className="bg-elevated border border-cream-200 rounded-xl rounded-bl-[6px] px-4 py-3 shadow-sm">
-        <div className="flex gap-1 items-center h-5">
-          <span className="w-1.5 h-1.5 rounded-full bg-cream-400 animate-bounce [animation-delay:0ms]" />
-          <span className="w-1.5 h-1.5 rounded-full bg-cream-400 animate-bounce [animation-delay:150ms]" />
-          <span className="w-1.5 h-1.5 rounded-full bg-cream-400 animate-bounce [animation-delay:300ms]" />
+    <div className="flex items-start gap-3 justify-start animate-glass-in">
+      <div className="glass-elevated rounded-2xl rounded-bl-lg px-5 py-3.5">
+        <div className="flex gap-1.5 items-center h-5">
+          <span
+            className="w-2 h-2 rounded-full bg-ice-400/60"
+            style={{ animation: "typing-dot 1.4s ease-in-out infinite", animationDelay: "0ms" }}
+          />
+          <span
+            className="w-2 h-2 rounded-full bg-ice-400/60"
+            style={{ animation: "typing-dot 1.4s ease-in-out infinite", animationDelay: "200ms" }}
+          />
+          <span
+            className="w-2 h-2 rounded-full bg-ice-400/60"
+            style={{ animation: "typing-dot 1.4s ease-in-out infinite", animationDelay: "400ms" }}
+          />
         </div>
       </div>
     </div>

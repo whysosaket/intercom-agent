@@ -42,16 +42,17 @@ export function ChatMessages({
 
   return (
     <div className="flex-1 overflow-y-auto px-8 py-6 flex flex-col gap-5">
-      {messages.map((msg) => (
-        <MessageBubble
-          key={msg.id}
-          message={msg}
-          onSelectTrace={onSelectTrace}
-          onApprove={onApprove}
-          onEdit={onEdit}
-          onReject={onReject}
-          isSelected={msg.id === selectedTraceId}
-        />
+      {messages.map((msg, i) => (
+        <div key={msg.id} style={{ animationDelay: `${i * 40}ms` }}>
+          <MessageBubble
+            message={msg}
+            onSelectTrace={onSelectTrace}
+            onApprove={onApprove}
+            onEdit={onEdit}
+            onReject={onReject}
+            isSelected={msg.id === selectedTraceId}
+          />
+        </div>
       ))}
       {isTyping && <TypingIndicator />}
       <div ref={bottomRef} />

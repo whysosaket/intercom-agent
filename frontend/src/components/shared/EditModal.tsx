@@ -30,7 +30,7 @@ export function EditModal({ open, initialText, onSave, onCancel }: EditModalProp
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onCancel() }}>
-      <DialogContent className="sm:max-w-lg bg-elevated">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Edit Response</DialogTitle>
         </DialogHeader>

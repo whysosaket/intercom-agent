@@ -23,11 +23,11 @@ export function ConversationList({
   onSelect,
 }: ConversationListProps) {
   return (
-    <aside className="flex flex-col border-r border-cream-200 bg-elevated overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-cream-200 flex-shrink-0">
-        <h2 className="text-sm font-semibold text-cream-800">Conversations</h2>
+    <aside className="flex flex-col glass-panel border-r border-[rgba(255,255,255,0.04)] overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[rgba(255,255,255,0.04)] flex-shrink-0">
+        <h2 className="text-sm font-semibold text-graphite-100 tracking-tight">Conversations</h2>
         {conversations.length > 0 && (
-          <span className="text-xs text-cream-400">{conversations.length}</span>
+          <span className="text-xs text-graphite-500 bg-[rgba(255,255,255,0.04)] px-2 py-0.5 rounded-full">{conversations.length}</span>
         )}
       </div>
       <div className="flex-1 overflow-y-auto">

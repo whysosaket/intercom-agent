@@ -1,59 +1,76 @@
 @import "tailwindcss";
 
-@theme {
-  /* ── Warm cream neutral scale ── */
-  --color-cream-50:  #faf8f5;
-  --color-cream-100: #f3efe9;
-  --color-cream-200: #e8e2d9;
-  --color-cream-300: #d5cdc2;
-  --color-cream-400: #b0a898;
-  --color-cream-500: #8a8175;
-  --color-cream-600: #6b6358;
-  --color-cream-700: #514a41;
-  --color-cream-800: #342f29;
-  --color-cream-900: #1f1b16;
-  --color-cream-950: #110e0b;
+/* ══════════════════════════════════════════════════════════════════════════
+   LIQUID GLASS DESIGN SYSTEM
+   ══════════════════════════════════════════════════════════════════════════ */
 
-  /* ── Accent (warm coral/orange) ── */
-  --color-accent-50:  #fef5f0;
-  --color-accent-100: #fde8dd;
-  --color-accent-200: #fbcdb4;
-  --color-accent-300: #f7a882;
-  --color-accent-400: #f08050;
-  --color-accent-500: #e85d3a;
-  --color-accent-600: #d44425;
-  --color-accent-700: #b5351c;
+@theme {
+  /* ── Deep Graphite Neutral Scale ── */
+  --color-graphite-50:  #f0f1f4;
+  --color-graphite-100: #d8dbe2;
+  --color-graphite-200: #b4b9c6;
+  --color-graphite-300: #8d94a6;
+  --color-graphite-400: #6b7389;
+  --color-graphite-500: #4a5168;
+  --color-graphite-600: #363c50;
+  --color-graphite-700: #272c3a;
+  --color-graphite-800: #1a1d27;
+  --color-graphite-900: #101218;
+  --color-graphite-950: #0a0b0f;
+
+  /* ── Cool Electric Blue Accent ── */
+  --color-ice-50:  #eef4ff;
+  --color-ice-100: #d9e6ff;
+  --color-ice-200: #b3ccff;
+  --color-ice-300: #80abff;
+  --color-ice-400: #5c8ffa;
+  --color-ice-500: #3b73f5;
+  --color-ice-600: #2563eb;
+  --color-ice-700: #1d4fd8;
+  --color-ice-800: #1e3fae;
+  --color-ice-900: #1e3589;
+
+  /* ── Cyan Frost ── */
+  --color-frost-50:  #ecfdff;
+  --color-frost-100: #cff7fe;
+  --color-frost-200: #a5effc;
+  --color-frost-300: #67e3f9;
+  --color-frost-400: #22ccee;
+  --color-frost-500: #06aed4;
+  --color-frost-600: #088ab2;
+  --color-frost-700: #0e7090;
 
   /* ── Status ── */
-  --color-success:    #2d8a56;
-  --color-success-bg: #f0faf4;
-  --color-warning:    #c08b1e;
-  --color-warning-bg: #fdf8ed;
-  --color-error:      #c43030;
-  --color-error-bg:   #fdf0f0;
+  --color-success:    #34d399;
+  --color-success-bg: rgba(52, 211, 153, 0.08);
+  --color-warning:    #fbbf24;
+  --color-warning-bg: rgba(251, 191, 36, 0.08);
+  --color-error:      #f87171;
+  --color-error-bg:   rgba(248, 113, 113, 0.08);
 
-  /* ── Surface ── */
-  --color-surface:  #f7f4ef;
-  --color-elevated: #ffffff;
+  /* ── Surface System ── */
+  --color-surface:   #0d0e13;
+  --color-elevated:  rgba(22, 24, 33, 0.7);
 
   /* ── Typography ── */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-sans: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, monospace;
 
-  --text-xs:   11px;
-  --text-sm:   12.5px;
-  --text-base: 13.5px;
-  --text-md:   14.5px;
-  --text-lg:   16px;
-  --text-xl:   20px;
-  --text-2xl:  26px;
+  --text-xs:   0.6875rem;
+  --text-sm:   0.78125rem;
+  --text-base: 0.875rem;
+  --text-md:   0.9375rem;
+  --text-lg:   1.0625rem;
+  --text-xl:   1.3125rem;
+  --text-2xl:  1.625rem;
+  --text-3xl:  2rem;
 
-  /* ── Shadows (warm, creamy) ── */
-  --shadow-xs:  0 1px 2px rgba(31, 27, 22, 0.04);
-  --shadow-sm:  0 1px 3px rgba(31, 27, 22, 0.05), 0 1px 2px rgba(31, 27, 22, 0.03);
-  --shadow-md:  0 4px 14px -2px rgba(31, 27, 22, 0.07), 0 2px 4px rgba(31, 27, 22, 0.03);
-  --shadow-lg:  0 12px 28px -4px rgba(31, 27, 22, 0.09), 0 4px 8px rgba(31, 27, 22, 0.03);
-  --shadow-xl:  0 20px 44px -8px rgba(31, 27, 22, 0.12), 0 8px 16px rgba(31, 27, 22, 0.04);
+  /* ── Shadows ── */
+  --shadow-xs:  0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm:  0 1px 3px rgba(0, 0, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.15);
+  --shadow-md:  0 4px 14px -2px rgba(0, 0, 0, 0.35), 0 2px 4px rgba(0, 0, 0, 0.2);
+  --shadow-lg:  0 12px 28px -4px rgba(0, 0, 0, 0.4), 0 4px 8px rgba(0, 0, 0, 0.2);
+  --shadow-xl:  0 20px 44px -8px rgba(0, 0, 0, 0.5), 0 8px 16px rgba(0, 0, 0, 0.25);
 
   /* ── Radii ── */
   --radius-sm:   8px;
@@ -66,37 +83,227 @@
 
 /* ── ShadCN CSS Variable Overrides ── */
 :root {
-  --background: hsl(37, 33%, 97%);
-  --foreground: hsl(30, 17%, 10%);
-  --card: hsl(0, 0%, 100%);
-  --card-foreground: hsl(30, 17%, 10%);
-  --popover: hsl(0, 0%, 100%);
-  --popover-foreground: hsl(30, 17%, 10%);
-  --primary: hsl(11, 75%, 49%);
+  --background: hsl(230, 18%, 5%);
+  --foreground: hsl(220, 20%, 90%);
+  --card: hsla(225, 20%, 10%, 0.7);
+  --card-foreground: hsl(220, 20%, 90%);
+  --popover: hsla(225, 20%, 10%, 0.95);
+  --popover-foreground: hsl(220, 20%, 90%);
+  --primary: hsl(222, 89%, 56%);
   --primary-foreground: hsl(0, 0%, 100%);
-  --secondary: hsl(33, 20%, 93%);
-  --secondary-foreground: hsl(30, 17%, 10%);
-  --muted: hsl(33, 20%, 93%);
-  --muted-foreground: hsl(30, 10%, 50%);
-  --accent: hsl(11, 75%, 49%);
+  --secondary: hsla(220, 15%, 18%, 0.6);
+  --secondary-foreground: hsl(220, 20%, 85%);
+  --muted: hsla(220, 15%, 18%, 0.6);
+  --muted-foreground: hsl(220, 10%, 50%);
+  --accent: hsl(222, 89%, 56%);
   --accent-foreground: hsl(0, 0%, 100%);
-  --destructive: hsl(0, 60%, 47%);
+  --destructive: hsl(0, 84%, 60%);
   --destructive-foreground: hsl(0, 0%, 100%);
-  --border: hsl(33, 18%, 85%);
-  --input: hsl(33, 18%, 85%);
-  --ring: hsl(14, 85%, 63%);
+  --border: rgba(255, 255, 255, 0.06);
+  --input: rgba(255, 255, 255, 0.06);
+  --ring: hsl(222, 89%, 56%);
   --radius: 12px;
 }
 
-/* ── Base styles ── */
+/* ══════════════════════════════════════════════════════════════════════════
+   BASE STYLES
+   ══════════════════════════════════════════════════════════════════════════ */
+
 @layer base {
   * {
-    @apply border-[var(--border)];
+    border-color: var(--border);
   }
+
+  html {
+    color-scheme: dark;
+  }
+
   body {
-    @apply bg-surface text-cream-900 font-sans antialiased;
-    font-size: 14.5px;
-    line-height: 1.55;
-    letter-spacing: -0.01em;
+    @apply bg-surface text-graphite-100 font-sans antialiased;
+    font-size: 14px;
+    line-height: 1.6;
+    letter-spacing: -0.011em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
+
+  ::selection {
+    background: rgba(59, 115, 245, 0.3);
+    color: #fff;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.14);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   GLASS MORPHISM UTILITIES
+   ══════════════════════════════════════════════════════════════════════════ */
+
+@layer utilities {
+  .glass {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(24px) saturate(1.2);
+    -webkit-backdrop-filter: blur(24px) saturate(1.2);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .glass-elevated {
+    background: rgba(22, 24, 33, 0.65);
+    backdrop-filter: blur(32px) saturate(1.3);
+    -webkit-backdrop-filter: blur(32px) saturate(1.3);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    box-shadow:
+      inset 0 0 0 0.5px rgba(255, 255, 255, 0.05),
+      0 4px 24px -4px rgba(0, 0, 0, 0.3);
+  }
+
+  .glass-panel {
+    background: rgba(17, 19, 27, 0.75);
+    backdrop-filter: blur(40px) saturate(1.4);
+    -webkit-backdrop-filter: blur(40px) saturate(1.4);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow:
+      inset 0 0 0 0.5px rgba(255, 255, 255, 0.04),
+      0 8px 32px -8px rgba(0, 0, 0, 0.4);
+  }
+
+  .glass-surface {
+    background: rgba(255, 255, 255, 0.02);
+    backdrop-filter: blur(16px) saturate(1.1);
+    -webkit-backdrop-filter: blur(16px) saturate(1.1);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+  }
+
+  .glass-inner-highlight {
+    box-shadow:
+      inset 0 0 0 0.5px rgba(255, 255, 255, 0.06),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.04);
+  }
+
+  .glass-glow {
+    box-shadow:
+      inset 0 0 0 0.5px rgba(255, 255, 255, 0.05),
+      0 0 20px rgba(59, 115, 245, 0.08),
+      0 4px 24px -4px rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ANIMATIONS
+   ══════════════════════════════════════════════════════════════════════════ */
+
+@layer base {
+  @keyframes ambient-drift {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    25% { transform: translate(30px, -20px) scale(1.05); }
+    50% { transform: translate(-20px, 15px) scale(0.95); }
+    75% { transform: translate(15px, 25px) scale(1.02); }
+  }
+
+  @keyframes typing-dot {
+    0%, 80%, 100% {
+      opacity: 0.2;
+      transform: scale(0.85);
+    }
+    40% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes stagger-in {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes glass-fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  .animate-glass-in {
+    animation: glass-fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .animate-stagger-in {
+    animation: stagger-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    opacity: 0;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   AMBIENT BACKGROUND — Signature Visual Detail
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.ambient-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ambient-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  animation: ambient-drift 25s ease-in-out infinite;
+  will-change: transform;
+}
+
+.ambient-orb-1 {
+  width: 600px;
+  height: 600px;
+  top: -15%;
+  left: -10%;
+  background: radial-gradient(circle, rgba(59, 115, 245, 0.08) 0%, transparent 70%);
+  animation-duration: 30s;
+}
+
+.ambient-orb-2 {
+  width: 500px;
+  height: 500px;
+  bottom: -10%;
+  right: -5%;
+  background: radial-gradient(circle, rgba(6, 174, 212, 0.06) 0%, transparent 70%);
+  animation-duration: 22s;
+  animation-delay: -8s;
+}
+
+.ambient-orb-3 {
+  width: 400px;
+  height: 400px;
+  top: 40%;
+  left: 50%;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.05) 0%, transparent 70%);
+  animation-duration: 28s;
+  animation-delay: -15s;
 }
