@@ -25,7 +25,7 @@ export function AppHeader({ statusBadge, actions }: AppHeaderProps) {
       </div>
       <div className="flex items-center gap-2">
         {isChat ? (
-          <Link to="/eval">
+          <Link to="/dashboard">
             <Button variant="ghost" size="sm">
               Evals &rarr;
             </Button>

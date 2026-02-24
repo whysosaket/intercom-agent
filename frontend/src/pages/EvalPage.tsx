@@ -4,8 +4,7 @@ import { ConversationList } from "@/components/eval/ConversationList"
 import { MessageHistory } from "@/components/eval/MessageHistory"
 import { CandidatesPanel } from "@/components/eval/CandidatesPanel"
 import { EvalReport } from "@/components/eval/EvalReport"
-import { FetchControls } from "@/components/eval/FetchControls"
-import { GenerateControls } from "@/components/eval/GenerateControls"
+import { EvalActionsDropdown } from "@/components/eval/eval-actions-dropdown"
 import { EditModal } from "@/components/shared/EditModal"
 import { useEvalState } from "@/hooks/useEvalState"
 
@@ -110,20 +109,16 @@ export function EvalPage() {
       <AppHeader
         statusBadge={statusBadge}
         actions={
-          <div className="flex items-center gap-2">
-            <FetchControls
-              limit={fetchLimit}
-              onLimitChange={setFetchLimit}
-              onFetch={() => fetchConversations(fetchLimit)}
-              disabled={fetchStatus === "loading" || isBatchRunning}
-            />
-            <GenerateControls
-              generateMode={generateMode}
-              onModeChange={setGenerateMode}
-              onGenerate={handleBatchGenerate}
-              disabled={conversations.length === 0 || isBatchRunning}
-            />
-          </div>
+          <EvalActionsDropdown
+            fetchLimit={fetchLimit}
+            onFetchLimitChange={setFetchLimit}
+            onFetch={() => fetchConversations(fetchLimit)}
+            generateMode={generateMode}
+            onGenerateModeChange={setGenerateMode}
+            onGenerate={handleBatchGenerate}
+            fetchDisabled={fetchStatus === "loading" || isBatchRunning}
+            generateDisabled={conversations.length === 0 || isBatchRunning}
+          />
         }
       />
       <EvalReport stats={reportStats} />
