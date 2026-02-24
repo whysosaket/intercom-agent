@@ -1,5 +1,7 @@
+import { ExternalLink } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { EvalConversation, Candidate } from "@/lib/types"
+import { getIntercomConversationUrl } from "@/lib/intercom"
 
 interface ConversationItemProps {
   conversation: EvalConversation
@@ -22,6 +24,7 @@ export function ConversationItem({
   const firstMsg = conversation.messages?.[0]?.content || ""
   const preview = firstMsg.length > 80 ? firstMsg.slice(0, 80) + "..." : firstMsg
   const msgCount = conversation.messages?.length || 0
+  const intercomUrl = getIntercomConversationUrl(conversation.conversation_id)
 
   let badge: { text: string; className: string } | null = null
   if (isSent) {
@@ -55,16 +58,31 @@ export function ConversationItem({
     >
       <div className="flex items-center justify-between mb-1">
         <span className="text-sm font-medium text-cream-800 truncate">{name}</span>
-        <span className="text-[11px] text-cream-400 flex-shrink-0">
+        <span className="text-[11px] text-cream-400 shrink-0">
           {msgCount} msg{msgCount !== 1 ? "s" : ""}
         </span>
       </div>
       <div className="text-xs text-cream-500 truncate">{preview}</div>
-      {badge && (
-        <span className={cn("inline-block mt-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full", badge.className)}>
-          {badge.text}
-        </span>
-      )}
+      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+        {badge && (
+          <span className={cn("inline-block text-[10px] font-medium px-1.5 py-0.5 rounded-full", badge.className)}>
+            {badge.text}
+          </span>
+        )}
+        {intercomUrl && (
+          <a
+            href={intercomUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1 text-[10px] text-accent-600 hover:text-accent-700 hover:underline"
+            title="Open in Intercom"
+          >
+            <ExternalLink className="size-3" aria-hidden />
+            <span>Open in Intercom</span>
+          </a>
+        )}
+      </div>
     </button>
   )
 }
