@@ -21,9 +21,9 @@ export function MessageHistory({ conversation, isGenerating, onGenerate }: Messa
 
   if (!conversation) {
     return (
-      <main className="flex flex-col bg-surface overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-cream-200 flex-shrink-0">
-          <h2 className="text-sm font-semibold text-cream-800">Messages</h2>
+      <main className="flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-[rgba(255,255,255,0.04)] flex-shrink-0">
+          <h2 className="text-sm font-semibold text-graphite-100 tracking-tight">Messages</h2>
         </div>
         <EmptyState title="Select a conversation from the left panel." />
       </main>
@@ -34,9 +34,9 @@ export function MessageHistory({ conversation, isGenerating, onGenerate }: Messa
   const title = `${name} — ${conversation.conversation_id.slice(0, 12)}...`
 
   return (
-    <main className="flex flex-col bg-surface overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-cream-200 flex-shrink-0">
-        <h2 className="text-sm font-semibold text-cream-800">{title}</h2>
+    <main className="flex flex-col overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-[rgba(255,255,255,0.04)] flex-shrink-0">
+        <h2 className="text-sm font-semibold text-graphite-100 tracking-tight">{title}</h2>
         <Button size="sm" onClick={onGenerate} disabled={isGenerating}>
           {isGenerating ? "Generating..." : "Generate Responses"}
         </Button>
@@ -46,15 +46,15 @@ export function MessageHistory({ conversation, isGenerating, onGenerate }: Messa
           const isUser = msg.role === "user"
           return (
             <div key={i} className={cn("flex flex-col", isUser ? "items-end" : "items-start")}>
-              <span className="text-[10px] text-cream-400 mb-0.5 uppercase tracking-wider">
+              <span className="text-[10px] text-graphite-600 mb-0.5 uppercase tracking-wider font-medium">
                 {isUser ? "Customer" : "Admin"}
               </span>
               <div
                 className={cn(
                   "max-w-[80%] px-4 py-3 text-sm whitespace-pre-wrap",
                   isUser
-                    ? "bg-accent-600 text-white rounded-xl rounded-br-[6px] shadow-md"
-                    : "bg-elevated border border-cream-200 rounded-xl rounded-bl-[6px]",
+                    ? "bg-ice-600 text-white rounded-2xl rounded-br-lg shadow-[0_0_20px_rgba(59,115,245,0.15),inset_0_1px_0_rgba(255,255,255,0.1)]"
+                    : "glass-elevated rounded-2xl rounded-bl-lg text-graphite-200",
                 )}
               >
                 {msg.content}

@@ -28,7 +28,7 @@ export function GenerateControls({
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button size="sm" disabled={disabled} className="rounded-l-none border-l border-l-white/20 px-2">
+          <Button size="sm" disabled={disabled} className="rounded-l-none border-l border-l-white/10 px-2">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
               <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -37,11 +37,11 @@ export function GenerateControls({
         <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={() => onModeChange("unanswered")}>
             Generate Unanswered
-            {generateMode === "unanswered" && <span className="ml-auto text-accent-500">&#10003;</span>}
+            {generateMode === "unanswered" && <span className="ml-auto text-ice-400">&#10003;</span>}
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => onModeChange("all")}>
             Generate All
-            {generateMode === "all" && <span className="ml-auto text-accent-500">&#10003;</span>}
+            {generateMode === "all" && <span className="ml-auto text-ice-400">&#10003;</span>}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

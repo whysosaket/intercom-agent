@@ -27,7 +27,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
   }
 
   return (
-    <div className="flex items-end gap-3 p-5 border-t border-cream-200 bg-elevated flex-shrink-0">
+    <div className="flex items-end gap-3 p-5 glass-elevated border-t border-[rgba(255,255,255,0.04)] flex-shrink-0">
       <Textarea
         ref={textareaRef}
         value={value}

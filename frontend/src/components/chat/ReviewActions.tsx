@@ -8,11 +8,11 @@ interface ReviewActionsProps {
 
 export function ReviewActions({ onApprove, onEdit, onReject }: ReviewActionsProps) {
   return (
-    <div className="flex gap-1.5 mt-1.5">
+    <div className="flex gap-1.5 mt-2">
       <Button
         size="sm"
         variant="outline"
-        className="h-7 text-xs border-success/30 text-success hover:bg-success-bg hover:text-success"
+        className="h-7 text-xs border-success/20 text-success hover:bg-success/10 hover:border-success/30 hover:shadow-[0_0_12px_rgba(52,211,153,0.1)]"
         onClick={onApprove}
       >
         Approve
@@ -28,7 +28,7 @@ export function ReviewActions({ onApprove, onEdit, onReject }: ReviewActionsProp
       <Button
         size="sm"
         variant="ghost"
-        className="h-7 text-xs text-cream-500 hover:text-error"
+        className="h-7 text-xs text-graphite-500 hover:text-error"
         onClick={onReject}
       >
         Reject

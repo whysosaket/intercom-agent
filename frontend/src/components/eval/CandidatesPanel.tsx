@@ -11,9 +11,9 @@ interface CandidatesPanelProps {
 
 export function CandidatesPanel({ candidates, isSent, onApprove, onEdit }: CandidatesPanelProps) {
   return (
-    <aside className="flex flex-col border-l border-cream-200 bg-elevated overflow-hidden">
-      <div className="flex items-center px-5 py-3 border-b border-cream-200 flex-shrink-0">
-        <h2 className="text-sm font-semibold text-cream-800">Candidate Responses</h2>
+    <aside className="flex flex-col glass-panel border-l border-[rgba(255,255,255,0.04)] overflow-hidden">
+      <div className="flex items-center px-5 py-3 border-b border-[rgba(255,255,255,0.04)] flex-shrink-0">
+        <h2 className="text-sm font-semibold text-graphite-100 tracking-tight">Candidate Responses</h2>
       </div>
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {candidates.length === 0 ? (

@@ -31,28 +31,28 @@ export function MessageBubble({
   }
 
   return (
-    <div className={cn("flex flex-col", isUser ? "items-end" : "items-start")}>
+    <div className={cn("flex flex-col animate-stagger-in", isUser ? "items-end" : "items-start")}>
       <div
         className={cn(
-          "max-w-[75%] px-4 py-3 text-sm whitespace-pre-wrap transition-shadow",
+          "max-w-[75%] px-4 py-3 text-sm whitespace-pre-wrap transition-all duration-300",
           isUser
-            ? "bg-accent-600 text-white rounded-xl rounded-br-[6px] shadow-md"
+            ? "bg-ice-600 text-white rounded-2xl rounded-br-lg shadow-[0_0_20px_rgba(59,115,245,0.15),inset_0_1px_0_rgba(255,255,255,0.1)]"
             : cn(
-                "bg-elevated border border-cream-200 rounded-xl rounded-bl-[6px] cursor-pointer hover:shadow-md",
-                isPending && "border-l-[3px] border-l-accent-400",
-                isRejected && "opacity-50 line-through",
-                isSelected && "ring-2 ring-accent-400/30",
+                "glass-elevated rounded-2xl rounded-bl-lg cursor-pointer hover:bg-[rgba(255,255,255,0.05)] hover:shadow-[0_0_24px_rgba(0,0,0,0.2)]",
+                isPending && "border-l-2 border-l-ice-400/60 shadow-[0_0_16px_rgba(59,115,245,0.08)]",
+                isRejected && "opacity-40 line-through",
+                isSelected && "ring-1 ring-ice-400/25 shadow-[0_0_20px_rgba(59,115,245,0.1)]",
               ),
         )}
         onClick={() => {
           if (!isUser) onSelectTrace(message.id)
         }}
       >
-        {message.content}
+        <span className={cn(!isUser && "text-graphite-200")}>{message.content}</span>
       </div>
 
       {!isUser && message.confidence !== undefined && (
-        <ConfidenceBadge confidence={message.confidence} className="mt-1" />
+        <ConfidenceBadge confidence={message.confidence} className="mt-1.5" />
       )}
 
       {isPending && message.messageIndex !== undefined && (
@@ -64,11 +64,11 @@ export function MessageBubble({
       )}
 
       {message.status === "sent" && message.autoSent && (
-        <span className="text-[11px] text-cream-400 mt-1">Auto-sent (high confidence)</span>
+        <span className="text-[11px] text-graphite-500 mt-1">Auto-sent (high confidence)</span>
       )}
 
       {statusLabel[message.status] && message.status !== "sent" && (
-        <span className="text-[11px] text-cream-400 mt-1">{statusLabel[message.status]}</span>
+        <span className="text-[11px] text-graphite-500 mt-1">{statusLabel[message.status]}</span>
       )}
     </div>
   )

@@ -10,15 +10,15 @@ export function ConfidenceBadge({ confidence, className }: ConfidenceBadgeProps)
 
   const colorClass =
     confidence >= 0.8
-      ? "bg-success-bg text-success"
+      ? "bg-success/10 text-success border-success/15"
       : confidence >= 0.5
-        ? "bg-warning-bg text-warning"
-        : "bg-error-bg text-error"
+        ? "bg-warning/10 text-warning border-warning/15"
+        : "bg-error/10 text-error border-error/15"
 
   return (
     <span
       className={cn(
-        "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium",
+        "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border transition-all duration-300",
         colorClass,
         className,
       )}
