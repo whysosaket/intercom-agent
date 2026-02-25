@@ -7,9 +7,11 @@ interface CandidatesPanelProps {
   isSent: boolean
   onApprove: (text: string) => void
   onEdit: (text: string) => void
+  onRefine?: (index: number, instructions: string) => void
+  refiningIndex?: number | null
 }
 
-export function CandidatesPanel({ candidates, isSent, onApprove, onEdit }: CandidatesPanelProps) {
+export function CandidatesPanel({ candidates, isSent, onApprove, onEdit, onRefine, refiningIndex }: CandidatesPanelProps) {
   return (
     <aside className="flex flex-col border-l border-cream-200 bg-elevated overflow-hidden">
       <div className="flex items-center px-5 py-3 border-b border-cream-200 flex-shrink-0">
@@ -27,6 +29,8 @@ export function CandidatesPanel({ candidates, isSent, onApprove, onEdit }: Candi
               isSent={isSent}
               onApprove={onApprove}
               onEdit={onEdit}
+              onRefine={onRefine}
+              isRefining={refiningIndex === i}
             />
           ))
         )}

@@ -169,6 +169,49 @@ export function useEvalState() {
     [],
   )
 
+  const setCandidates = useCallback(
+    (conversationId: string, candidates: Candidate[]) => {
+      dispatch({ type: "SET_CANDIDATES", conversationId, candidates })
+    },
+    [],
+  )
+
+  const sendAllHighConfidence = useCallback(
+    async () => {
+      const eligible: Array<{
+        convId: string
+        text: string
+        customerMessage: string
+        userId: string
+      }> = []
+
+      state.candidatesMap.forEach((candidates, convId) => {
+        if (state.sentConversations.has(convId)) return
+        const best = candidates[0]
+        if (!best || best.error || best.confidence < 0.8) return
+        const conv = state.conversations.find((c) => c.conversation_id === convId)
+        if (!conv) return
+        const userId = conv.contact?.email || conv.contact?.id || convId
+        const userMsgs = conv.messages.filter((m) => m.role === "user")
+        const customerMessage = userMsgs.map((m) => m.content).join("\n")
+        eligible.push({ convId, text: best.text, customerMessage, userId })
+      })
+
+      let sentCount = 0
+      for (const item of eligible) {
+        try {
+          await api.sendResponse(item.convId, item.text, item.customerMessage, item.userId)
+          dispatch({ type: "MARK_SENT", conversationId: item.convId })
+          sentCount++
+        } catch (err) {
+          console.error(`Failed to send for ${item.convId}`, err)
+        }
+      }
+      return sentCount
+    },
+    [state.candidatesMap, state.sentConversations, state.conversations],
+  )
+
   // Derived report stats
   const reportStats = useMemo(() => {
     const candidates = state.candidatesMap
@@ -220,17 +263,30 @@ export function useEvalState() {
     [state.selectedConvId, state.candidatesMap],
   )
 
+  const highConfidenceCount = useMemo(() => {
+    let count = 0
+    state.candidatesMap.forEach((candidates, convId) => {
+      if (state.sentConversations.has(convId)) return
+      const best = candidates[0]
+      if (best && !best.error && best.confidence >= 0.8) count++
+    })
+    return count
+  }, [state.candidatesMap, state.sentConversations])
+
   return {
     ...state,
     selectedConversation,
     selectedCandidates,
     reportStats,
+    highConfidenceCount,
     fetchConversations,
     selectConversation,
     setGenerateMode,
     generateSingle,
     generateBatch,
     sendApproved,
+    setCandidates,
+    sendAllHighConfidence,
     cancelStream,
   }
 }

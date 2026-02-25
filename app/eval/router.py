@@ -51,6 +51,19 @@ class FetchRequest(BaseModel):
     limit: int = 20
 
 
+class TranslateRequest(BaseModel):
+    text: str
+    target_language: str = "English"
+
+
+class RefineRequest(BaseModel):
+    conversation_id: str
+    original_response: str
+    user_instructions: str
+    customer_message: str
+    confidence: float = 0.0
+
+
 # ── Routes ──
 
 
@@ -479,3 +492,97 @@ async def send_response(request: Request, body: SendRequest):
     except Exception:
         logger.exception("Failed to send response to %s", body.conversation_id)
         raise HTTPException(status_code=500, detail="Failed to send response to Intercom")
+
+
+@router.post("/translate")
+async def translate_text(body: TranslateRequest):
+    """Translate text to a target language using OpenAI."""
+    from openai import AsyncOpenAI
+
+    from app.config import settings
+
+    if not settings.OPENAI_API_KEY:
+        raise HTTPException(status_code=400, detail="OpenAI API key not configured")
+
+    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+
+    try:
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        f"You are a translator. Translate the following text to {body.target_language}. "
+                        "Return ONLY the translated text, nothing else. "
+                        "If the text is already in the target language, return it unchanged."
+                    ),
+                },
+                {"role": "user", "content": body.text},
+            ],
+        )
+        translated = response.choices[0].message.content.strip()
+        return {
+            "translated_text": translated,
+            "source_text": body.text,
+            "target_language": body.target_language,
+        }
+    except Exception:
+        logger.exception("Translation failed")
+        raise HTTPException(status_code=500, detail="Translation failed")
+
+
+@router.post("/refine")
+async def refine_response(body: RefineRequest):
+    """Refine a low-confidence response based on user instructions."""
+    from openai import AsyncOpenAI
+
+    from app.config import settings
+
+    if not settings.OPENAI_API_KEY:
+        raise HTTPException(status_code=400, detail="OpenAI API key not configured")
+
+    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+
+    system_prompt = (
+        "You are a support response refinement agent. You will receive:\n"
+        "1. A customer message\n"
+        "2. An original AI-generated response that needs improvement\n"
+        "3. Instructions from a human reviewer on how to improve it\n\n"
+        "Produce an improved response that:\n"
+        "- Incorporates the reviewer's instructions\n"
+        "- Maintains the original response's correct parts\n"
+        "- Reads like a natural, helpful support reply\n"
+        "- Is concise and direct\n\n"
+        'Return ONLY valid JSON: {"refined_text": "...", "confidence": 0.0, "reasoning": "..."}\n'
+        "The confidence should reflect how well the refined response answers the "
+        "customer's question (0.0-1.0)."
+    )
+
+    user_prompt = (
+        f"## Customer Message\n{body.customer_message}\n\n"
+        f"## Original AI Response (confidence: {body.confidence})\n{body.original_response}\n\n"
+        f"## Reviewer Instructions\n{body.user_instructions}"
+    )
+
+    try:
+        response = await client.chat.completions.create(
+            model=settings.OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+        )
+
+        parsed = json_mod.loads(response.choices[0].message.content)
+
+        return {
+            "conversation_id": body.conversation_id,
+            "refined_text": parsed["refined_text"],
+            "confidence": float(parsed.get("confidence", 0.7)),
+            "reasoning": parsed.get("reasoning", "Refined based on reviewer input"),
+        }
+    except Exception:
+        logger.exception("Refinement failed for %s", body.conversation_id)
+        raise HTTPException(status_code=500, detail="Refinement failed")

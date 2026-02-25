@@ -50,4 +50,39 @@ export const api = {
     })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
   },
+
+  async translateText(
+    text: string,
+    targetLanguage: string = "English",
+  ): Promise<{ translated_text: string; source_text: string; target_language: string }> {
+    const res = await fetch(`${API_BASE}/eval/translate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, target_language: targetLanguage }),
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return res.json()
+  },
+
+  async refineResponse(
+    conversationId: string,
+    originalResponse: string,
+    userInstructions: string,
+    customerMessage: string,
+    confidence: number,
+  ): Promise<{ conversation_id: string; refined_text: string; confidence: number; reasoning: string }> {
+    const res = await fetch(`${API_BASE}/eval/refine`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        conversation_id: conversationId,
+        original_response: originalResponse,
+        user_instructions: userInstructions,
+        customer_message: customerMessage,
+        confidence,
+      }),
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return res.json()
+  },
 }

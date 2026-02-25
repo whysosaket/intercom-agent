@@ -65,6 +65,7 @@ export interface Candidate {
   total_duration_ms?: number
   pipeline_trace?: TraceEventData[]
   error?: string
+  refined?: boolean
 }
 
 export interface GenerateResult {

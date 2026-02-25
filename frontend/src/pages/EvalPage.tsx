@@ -6,7 +6,9 @@ import { CandidatesPanel } from "@/components/eval/CandidatesPanel"
 import { EvalReport } from "@/components/eval/EvalReport"
 import { EvalActionsDropdown } from "@/components/eval/eval-actions-dropdown"
 import { EditModal } from "@/components/shared/EditModal"
+import { Button } from "@/components/ui/button"
 import { useEvalState } from "@/hooks/useEvalState"
+import { api } from "@/lib/api"
 
 export function EvalPage() {
   const {
@@ -21,12 +23,15 @@ export function EvalPage() {
     selectedConversation,
     selectedCandidates,
     reportStats,
+    highConfidenceCount,
     fetchConversations,
     selectConversation,
     setGenerateMode,
     generateSingle,
     generateBatch,
     sendApproved,
+    setCandidates,
+    sendAllHighConfidence,
   } = useEvalState()
 
   const [fetchLimit, setFetchLimit] = useState(20)
@@ -87,6 +92,17 @@ export function EvalPage() {
     [selectedConvId, selectedConversation, sendApproved],
   )
 
+  const handleManualSend = useCallback(
+    async (text: string) => {
+      if (!selectedConvId || !selectedConversation) return
+      const userId = selectedConversation.contact?.email || selectedConversation.contact?.id || selectedConvId
+      const userMessages = selectedConversation.messages.filter((m) => m.role === "user")
+      const customerMessage = userMessages.map((m) => m.content).join("\n")
+      await sendApproved(selectedConvId, text, customerMessage, userId)
+    },
+    [selectedConvId, selectedConversation, sendApproved],
+  )
+
   const handleEditSave = useCallback(
     async (text: string) => {
       if (!editState) return
@@ -103,22 +119,84 @@ export function EvalPage() {
 
   const isBatchRunning = generatingSet.size > 0
   const isSent = selectedConvId ? sentConversations.has(selectedConvId) : false
+  const [replyAllSending, setReplyAllSending] = useState(false)
+  const [refiningIndex, setRefiningIndex] = useState<number | null>(null)
+
+  const handleRefine = useCallback(
+    async (candidateIndex: number, instructions: string) => {
+      if (!selectedConvId || !selectedConversation || !selectedCandidates[candidateIndex]) return
+
+      const candidate = selectedCandidates[candidateIndex]
+      const userMessages = selectedConversation.messages.filter((m) => m.role === "user")
+      const customerMessage = userMessages.map((m) => m.content).join("\n")
+
+      setRefiningIndex(candidateIndex)
+      try {
+        const result = await api.refineResponse(
+          selectedConvId,
+          candidate.text,
+          instructions,
+          customerMessage,
+          candidate.confidence,
+        )
+
+        const updatedCandidates = [...selectedCandidates]
+        updatedCandidates[candidateIndex] = {
+          ...candidate,
+          text: result.refined_text,
+          confidence: result.confidence,
+          reasoning: result.reasoning,
+          refined: true,
+        }
+        setCandidates(selectedConvId, updatedCandidates)
+      } catch (err) {
+        console.error("Refinement failed", err)
+      } finally {
+        setRefiningIndex(null)
+      }
+    },
+    [selectedConvId, selectedConversation, selectedCandidates, setCandidates],
+  )
+
+  const handleReplyAll = useCallback(async () => {
+    if (highConfidenceCount === 0) return
+    const confirmed = window.confirm(
+      `Send auto-replies for ${highConfidenceCount} conversation(s) with confidence ≥ 80%?`
+    )
+    if (!confirmed) return
+    setReplyAllSending(true)
+    try {
+      await sendAllHighConfidence()
+    } finally {
+      setReplyAllSending(false)
+    }
+  }, [highConfidenceCount, sendAllHighConfidence])
 
   return (
     <>
       <AppHeader
         statusBadge={statusBadge}
         actions={
-          <EvalActionsDropdown
-            fetchLimit={fetchLimit}
-            onFetchLimitChange={setFetchLimit}
-            onFetch={() => fetchConversations(fetchLimit)}
-            generateMode={generateMode}
-            onGenerateModeChange={setGenerateMode}
-            onGenerate={handleBatchGenerate}
-            fetchDisabled={fetchStatus === "loading" || isBatchRunning}
-            generateDisabled={conversations.length === 0 || isBatchRunning}
-          />
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              className="h-8 rounded-lg bg-success text-white hover:bg-success/90 px-3 text-xs"
+              disabled={highConfidenceCount === 0 || isBatchRunning || replyAllSending}
+              onClick={handleReplyAll}
+            >
+              {replyAllSending ? "Sending..." : `Reply All (${highConfidenceCount})`}
+            </Button>
+            <EvalActionsDropdown
+              fetchLimit={fetchLimit}
+              onFetchLimitChange={setFetchLimit}
+              onFetch={() => fetchConversations(fetchLimit)}
+              generateMode={generateMode}
+              onGenerateModeChange={setGenerateMode}
+              onGenerate={handleBatchGenerate}
+              fetchDisabled={fetchStatus === "loading" || isBatchRunning}
+              generateDisabled={conversations.length === 0 || isBatchRunning}
+            />
+          </div>
         }
       />
       <EvalReport stats={reportStats} />
@@ -135,7 +213,9 @@ export function EvalPage() {
         <MessageHistory
           conversation={selectedConversation}
           isGenerating={selectedConvId ? generatingSet.has(selectedConvId) : false}
+          isSent={isSent}
           onGenerate={handleGenerate}
+          onManualSend={handleManualSend}
         />
         <CandidatesPanel
           candidates={selectedCandidates}
@@ -144,6 +224,8 @@ export function EvalPage() {
           onEdit={(text) => {
             if (selectedConvId) setEditState({ convId: selectedConvId, text })
           }}
+          onRefine={handleRefine}
+          refiningIndex={refiningIndex}
         />
       </div>
       <EditModal
